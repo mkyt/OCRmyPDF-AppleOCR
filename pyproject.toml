@@ -1,0 +1,27 @@
+[project]
+name = "ocrmypdf-appleocr"
+version = "0.2.1"
+description = "Plugin to run OCRmyPDF with Apple Vision Framework OCR engine"
+authors = [{ name = "Masahiro Kiyota", email = "hiro@juzbox.com" }]
+dependencies = [
+  "pyobjc-core",
+  "pyobjc-framework-Vision",
+  "pyobjc-framework-Cocoa",
+  "langdetect",
+  "ocrmypdf>=14.2.1",
+  "Pillow>=10.0.1",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = { text = "MIT" }
+
+[project.entry-points]
+
+
+[project.urls]
+Homepage = "https://github.com/mkyt/OCRmyPDF-AppleOCR"
+Repository = "https://github.com/mkyt/OCRmyPDF-AppleOCR.git"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
