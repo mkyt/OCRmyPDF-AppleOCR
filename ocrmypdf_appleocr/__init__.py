@@ -3,6 +3,8 @@ from pathlib import Path
 import logging
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
+from ocrmypdf.exceptions import ExitCodeException
+import pluggy
 
 __version__ = "0.2.1"
 
@@ -16,7 +18,7 @@ import langdetect
 
 Textbox = tuple[str, float, float, float, float, float]
 
-lang_code_map = {
+lang_code_to_locale = {
     "eng": "en-US",
     "fra": "fr-FR",
     "ita": "it-IT",
@@ -47,7 +49,9 @@ lang_code_map = {
     "swe": "sv-SE",
 }
 
-lang_code_639_1_map = {
+locale_to_lang_code = {v: k for k, v in lang_code_to_locale.items()}
+
+lang_code_two_letter_to_three_letter = {
     "en": "eng",
     "fr": "fra",
     "it": "ita",
@@ -71,8 +75,14 @@ lang_code_639_1_map = {
     "no": "nor",
 }
 
-
-reverse_lang_code_map = {v: k for k, v in lang_code_map.items()}
+supported_languages = []
+with objc.autorelease_pool():
+     lst, _ = Vision.VNRecognizeTextRequest.alloc().init().supportedRecognitionLanguagesAndReturnError_(
+            None
+        )
+     for locale in lst:
+        if locale in locale_to_lang_code:
+            supported_languages.append(locale_to_lang_code[locale])
 
 
 def ocr_macos_live_text(
@@ -104,16 +114,15 @@ def ocr_macos_live_text(
 
     with objc.autorelease_pool():
         recognize_request = Vision.VNRecognizeTextRequest.alloc().init()
-        langs = options.appleocr_lang
-        if langs:
-            lang_codes = [
-                lang_code_map.get(lang, lang)
-                for lang in langs.split(",")
-                if lang in lang_code_map
+        if options.languages:
+            locales = [
+                lang_code_to_locale.get(lang, lang)
+                for lang in options.languages
             ]
             recognize_request.setAutomaticallyDetectsLanguage_(False)
-            recognize_request.setRecognitionLanguages_(lang_codes)
+            recognize_request.setRecognitionLanguages_(locales)
         else:
+            log.debug("No language specified, using automatic language detection")
             recognize_request.setAutomaticallyDetectsLanguage_(True)
         if options.appleocr_disable_correction:
             recognize_request.setUsesLanguageCorrection_(False)
@@ -138,6 +147,7 @@ def build_hocr_line(
     textbox: Textbox, page_number: int, line_number: int, lang: str
 ) -> str:
     text, x, y, w, h, confidence = textbox
+    bbox = f'bbox {x} {y} {x + w} {y + h}'
     text = (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -145,10 +155,10 @@ def build_hocr_line(
         .replace('"', "&quot;")
         .replace("'", "&apos;")
     )
-    return f"""<div class="ocr_carea" id="block_{page_number}_{line_number}" title="bbox {x} {y} {x + w} {y + h}">
-<p class="ocr_par" id="par_{page_number}_{line_number}" lang="{lang}" title="bbox {x} {y} {x + w} {y + h}">
-  <span class="ocr_line" id="line_{page_number}_{line_number}" title="bbox {x} {y} {x + w} {y + h}">
-    <span class="ocrx_word" id="word_{page_number}_{line_number}" title="bbox {x} {y} {x + w} {y + h}; x_wconf {confidence}">{text}</span>
+    return f"""<div class="ocr_carea" id="block_{page_number}_{line_number}" title="{bbox}">
+<p class="ocr_par" id="par_{page_number}_{line_number}" lang="{lang}" title="{bbox}">
+  <span class="ocr_line" id="line_{page_number}_{line_number}" title="{bbox}">
+    <span class="ocrx_word" id="word_{page_number}_{line_number}" title="{bbox}; x_wconf {confidence}">{text}</span>
   </span>
 </p>
 </div>
@@ -174,27 +184,32 @@ hocr_template = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def build_hocr_document(image: Path, options) -> str:
+def build_hocr_document(image: Path, options) -> tuple[str, str]:
     textboxes, width, height = ocr_macos_live_text(image, options)
-    lang = options.appleocr_lang
-    if not lang or "," in lang:
-        text = "".join(tb[0] for tb in textboxes)
-        lang = lang_code_639_1_map.get(langdetect.detect(text), "und")
+    plaintext = "\n".join(tb[0] for tb in textboxes)
+    if options.languages and len(options.languages) == 1:
+        lang = options.languages[0]
+    else:
+        try:
+            lang_ISO639_2 = langdetect.detect(plaintext)
+            lang = lang_code_two_letter_to_three_letter.get(lang_ISO639_2, "und")
+        except Exception:
+            lang = "und"
     content = "".join(build_hocr_line(tb, 0, i, lang) for i, tb in enumerate(textboxes))
-    res = hocr_template.format(content=content, width=width, height=height)
-    return res
+    hocr = hocr_template.format(content=content, width=width, height=height)
+    return hocr, plaintext
+
+
+@hookimpl
+def initialize(plugin_manager: pluggy.PluginManager):
+    # Disable built-in Tesseract OCR engine to avoid conflict
+    plugin_manager.set_blocked("ocrmypdf.builtin_plugins.tesseract_ocr")
 
 
 @hookimpl
 def add_options(parser):
     appleocr_options = parser.add_argument_group(
         "Apple OCR", "Apple Vision OCR options"
-    )
-    appleocr_options.add_argument(
-        "--appleocr-lang",
-        type=str,
-        help="Language for Apple Vision OCR (default: None, which means auto-detect)",
-        default=None,
     )
     appleocr_options.add_argument(
         "--appleocr-disable-correction",
@@ -209,6 +224,25 @@ def add_options(parser):
         help="Recognition level for Apple Vision OCR (default: accurate)",
     )
 
+@hookimpl
+def check_options(options):
+    if options.languages:
+        if len(options.languages) == 1 and options.languages[0] == "und":
+            options.languages = []
+        for lang in options.languages:
+            if '+' in lang:
+                raise ExitCodeException(15, "Language combination with '+' is not supported by Apple OCR. Use ',' to separate multiple languages.")
+            if lang not in supported_languages:
+                raise ExitCodeException(15, f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)}). Use 'und' for undetermined language.")
+
+    # Need to populate this value, as OCRmyPDF core uses it to determine if OCR should be performed.
+    # cf. https://github.com/ocrmypdf/OCRmyPDF/blob/main/src/ocrmypdf/_pipelines/ocr.py#L122
+    options.tesseract_timeout = 1
+
+    if options.pdf_renderer == 'auto':
+        options.pdf_renderer = 'hocr'
+    elif options.pdf_renderer == 'sandwich':
+        raise ExitCodeException(15, "--pdf-renderer=sandwich is not supported by Apple OCR. Use --pdf-renderer=hocr.")
 
 class AppleOCREngine(OcrEngine):
     """Implements OCR with Apple Vision Framework."""
@@ -227,16 +261,7 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def languages(options):
-        res = []
-        for (
-            lang
-        ) in Vision.VNRecognizeTextRequest().supportedRecognitionLanguagesAndReturnError_(
-            None
-        ):
-            l3 = reverse_lang_code_map.get(lang, None)
-            if l3:
-                res.append(l3)
-        return res
+        return supported_languages
 
     @staticmethod
     def get_orientation(input_file, options):
@@ -252,9 +277,11 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
-        res = build_hocr_document(Path(input_file), options)
+        hocr, plaintext = build_hocr_document(Path(input_file), options)
         with open(output_hocr, "w", encoding="utf-8") as f:
-            f.write(res)
+            f.write(hocr)
+        with open(output_text, "w", encoding="utf-8") as f:
+            f.write(plaintext)
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
