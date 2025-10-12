@@ -253,10 +253,10 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def creator_tag(options):
-        return f"Apple Vision {AppleOCREngine.version()}"
+        return f"AppleOCR Plugin {AppleOCREngine.version()}"
 
     def __str__(self):
-        return f"Apple Vision {AppleOCREngine.version()}"
+        return f"AppleOCR Plugin {AppleOCREngine.version()}"
 
     @staticmethod
     def languages(options):
