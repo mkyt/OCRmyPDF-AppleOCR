@@ -27,6 +27,6 @@ Note that [`sandwich` renderer](https://ocrmypdf.readthedocs.io/en/latest/advanc
 
 - `--appleocr-disable-correction`: Disable language correction in Apple Vision OCR (default: False)
 - `--appleocr-recognition-level`: Recognition level for Apple Vision OCR (default: accurate). Choices are `fast` and `accurate`.
-- `-l` or `--language`: Specify the language(s) for OCR in ISO 639-2 three-letter codes. Use `und` for undetermined language. Specifying multiple languages using `+` (e.g. `eng+fra`) is not supported.
+- `-l` or `--language`: Specify the language(s) for OCR in ISO 639-2 three-letter codes. Use `und` for undetermined language. Specifying multiple languages using `+` (e.g. `eng+fra`) for multilingual documents is not supported.
 
 If you specify `und` or specify multiple languages, the plugin will attempt to detect the language using the `langdetect` library. Note that the accuracy of language detection may vary depending on the content of the document.

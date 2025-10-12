@@ -1,20 +1,21 @@
-import sys
-from pathlib import Path
 import logging
+import platform
+from pathlib import Path
+
+import Cocoa
+import langdetect
+import objc
+import pluggy
+import Vision
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
-import pluggy
+from PIL import Image
 
 __version__ = "0.2.2"
 
 log = logging.getLogger(__name__)
 
-import objc
-import Cocoa
-import Vision
-from PIL import Image
-import langdetect
 
 Textbox = tuple[str, float, float, float, float, float]
 
@@ -77,17 +78,17 @@ lang_code_two_letter_to_three_letter = {
 
 supported_languages = []
 with objc.autorelease_pool():
-     lst, _ = Vision.VNRecognizeTextRequest.alloc().init().supportedRecognitionLanguagesAndReturnError_(
-            None
-        )
-     for locale in lst:
+    lst, _ = (
+        Vision.VNRecognizeTextRequest.alloc()
+        .init()
+        .supportedRecognitionLanguagesAndReturnError_(None)
+    )
+    for locale in lst:
         if locale in locale_to_lang_code:
             supported_languages.append(locale_to_lang_code[locale])
 
 
-def ocr_macos_live_text(
-    image_file: Path | str, options
-) -> tuple[list[Textbox], int, int]:
+def ocr_macos_live_text(image_file: Path, options) -> tuple[list[Textbox], int, int]:
     def read_observation(
         o: Vision.VNRecognizedTextObservation, image_width: int, image_height: int
     ) -> Textbox:
@@ -115,14 +116,11 @@ def ocr_macos_live_text(
     with objc.autorelease_pool():
         recognize_request = Vision.VNRecognizeTextRequest.alloc().init()
         if options.languages:
-            locales = [
-                lang_code_to_locale.get(lang, lang)
-                for lang in options.languages
-            ]
+            locales = [lang_code_to_locale.get(lang, lang) for lang in options.languages]
             recognize_request.setAutomaticallyDetectsLanguage_(False)
             recognize_request.setRecognitionLanguages_(locales)
         else:
-            log.debug("No language specified, using automatic language detection")
+            log.debug("Using automatic language detection.")
             recognize_request.setAutomaticallyDetectsLanguage_(True)
         if options.appleocr_disable_correction:
             recognize_request.setUsesLanguageCorrection_(False)
@@ -130,9 +128,7 @@ def ocr_macos_live_text(
             recognize_request.setUsesLanguageCorrection_(True)
         level = options.appleocr_recognition_level
         if level == "fast":
-            recognize_request.setRecognitionLevel_(
-                Vision.VNRequestTextRecognitionLevelFast
-            )
+            recognize_request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelFast)
         request_handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(
             Cocoa.NSURL.fileURLWithPath_(image_file.absolute().as_posix()), None
         )
@@ -143,11 +139,9 @@ def ocr_macos_live_text(
     return res, width, height
 
 
-def build_hocr_line(
-    textbox: Textbox, page_number: int, line_number: int, lang: str
-) -> str:
+def build_hocr_line(textbox: Textbox, page_number: int, line_number: int, lang: str) -> str:
     text, x, y, w, h, confidence = textbox
-    bbox = f'bbox {x} {y} {x + w} {y + h}'
+    bbox = f"bbox {x} {y} {x + w} {y + h}"
     text = (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -208,9 +202,7 @@ def initialize(plugin_manager: pluggy.PluginManager):
 
 @hookimpl
 def add_options(parser):
-    appleocr_options = parser.add_argument_group(
-        "Apple OCR", "Apple Vision OCR options"
-    )
+    appleocr_options = parser.add_argument_group("Apple OCR", "Apple Vision OCR options")
     appleocr_options.add_argument(
         "--appleocr-disable-correction",
         action="store_true",
@@ -224,25 +216,35 @@ def add_options(parser):
         help="Recognition level for Apple Vision OCR (default: accurate)",
     )
 
+
 @hookimpl
 def check_options(options):
     if options.languages:
         if len(options.languages) == 1 and options.languages[0] == "und":
             options.languages = []
         for lang in options.languages:
-            if '+' in lang:
-                raise ExitCodeException(15, "Language combination with '+' is not supported by Apple OCR.")
+            if "+" in lang:
+                raise ExitCodeException(
+                    15, "Language combination with '+' is not supported by Apple OCR."
+                )
             if lang not in supported_languages:
-                raise ExitCodeException(15, f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)}). Use 'und' for undetermined language.")
+                raise ExitCodeException(
+                    15,
+                    f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
+                )
 
     # Need to populate this value, as OCRmyPDF core uses it to determine if OCR should be performed.
     # cf. https://github.com/ocrmypdf/OCRmyPDF/blob/main/src/ocrmypdf/_pipelines/ocr.py#L122
     options.tesseract_timeout = 1
 
-    if options.pdf_renderer == 'auto':
-        options.pdf_renderer = 'hocr'
-    elif options.pdf_renderer == 'sandwich':
-        raise ExitCodeException(15, "--pdf-renderer=sandwich is not supported by Apple OCR. Use --pdf-renderer=hocr.")
+    if options.pdf_renderer == "auto":
+        options.pdf_renderer = "hocr"
+    elif options.pdf_renderer == "sandwich":
+        raise ExitCodeException(
+            15,
+            "AppleOCR plugin does not support the sandwich renderer. Use --pdf-renderer=hocr instead.",
+        )
+
 
 class AppleOCREngine(OcrEngine):
     """Implements OCR with Apple Vision Framework."""
@@ -253,7 +255,8 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def creator_tag(options):
-        return f"AppleOCR Plugin {AppleOCREngine.version()}"
+        os_version = platform.mac_ver()[0]
+        return f"AppleOCR Plugin {AppleOCREngine.version()} (on macOS {os_version})"
 
     def __str__(self):
         return f"AppleOCR Plugin {AppleOCREngine.version()}"
@@ -285,7 +288,7 @@ class AppleOCREngine(OcrEngine):
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
         raise NotImplementedError(
-            "Apple Vision OCR embedder does not support the sandwich renderer. Use --pdf-renderer=hocr instead."
+            "AppleOCR plugin does not support the sandwich renderer. Use --pdf-renderer=hocr instead."
         )
 
 
