@@ -253,8 +253,7 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def creator_tag(options):
-        tag = "-PDF" if options.pdf_renderer == "sandwich" else ""
-        return f"Apple Vision {tag} {AppleOCREngine.version()}"
+        return f"Apple Vision {AppleOCREngine.version()}"
 
     def __str__(self):
         return f"Apple Vision {AppleOCREngine.version()}"
