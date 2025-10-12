@@ -12,7 +12,7 @@ from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
 from PIL import Image
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 log = logging.getLogger(__name__)
 
