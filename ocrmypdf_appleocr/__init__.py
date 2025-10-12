@@ -285,7 +285,7 @@ class AppleOCREngine(OcrEngine):
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
         raise NotImplementedError(
-            "Apple Vision OCR embedder does not support PDF output yet -- use --pdf-renderer=hocr for now."
+            "Apple Vision OCR embedder does not support the sandwich renderer. Use --pdf-renderer=hocr instead."
         )
 
 
