@@ -6,7 +6,7 @@ from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
 import pluggy
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 log = logging.getLogger(__name__)
 
