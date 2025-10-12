@@ -231,7 +231,7 @@ def check_options(options):
             options.languages = []
         for lang in options.languages:
             if '+' in lang:
-                raise ExitCodeException(15, "Language combination with '+' is not supported by Apple OCR. Use ',' to separate multiple languages.")
+                raise ExitCodeException(15, "Language combination with '+' is not supported by Apple OCR.")
             if lang not in supported_languages:
                 raise ExitCodeException(15, f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)}). Use 'und' for undetermined language.")
 
