@@ -1,6 +1,6 @@
 # OCRmyPDF AppleOCR
 
-This is a plugin for [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF/) that enables OCR using the text detection feature (`RecognizeTextRequest`) of [Apple Vision Framework](https://developer.apple.com/documentation/vision) on macOS.
+This is a plugin for [OCRmyPDF](https://github.com/ocrmypdf/OCRmyPDF/) that enables OCR using the text detection feature (`VNRecognizeTextRequest`) of Apple's [Vision Framework](https://developer.apple.com/documentation/vision) on macOS.
 
 Apple's proprietary implementation offers good accuracy and speed compared to other on-device OCR engines like Tesseract.
 
