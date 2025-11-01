@@ -12,7 +12,7 @@ from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
 from PIL import Image
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +28,8 @@ lang_code_to_locale = {
     "por": "pt-BR",
     "chi_sim": "zh-Hans",
     "chi_tra": "zh-Hant",
+    "yue_sim": "yue-Hans",
+    "yue_tra": "yue-Hant",
     "kor": "ko-KR",
     "jpn": "ja-JP",
     "rus": "ru-RU",
@@ -74,18 +76,29 @@ lang_code_two_letter_to_three_letter = {
     "da": "dan",
     "nl": "nld",
     "no": "nor",
+    "pl": "pol",
+    "ro": "ron",
+    "sv": "swe",
 }
 
-supported_languages = []
+supported_languages_accurate: list[str] = []
+supported_languages_fast: list[str] = []
 with objc.autorelease_pool():
-    lst, _ = (
-        Vision.VNRecognizeTextRequest.alloc()
-        .init()
-        .supportedRecognitionLanguagesAndReturnError_(None)
-    )
+    req = Vision.VNRecognizeTextRequest.alloc().init()
+    req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+    lst, _ = req.supportedRecognitionLanguagesAndReturnError_(None)
     for locale in lst:
         if locale in locale_to_lang_code:
-            supported_languages.append(locale_to_lang_code[locale])
+            supported_languages_accurate.append(locale_to_lang_code[locale])
+        else:
+            log.debug(f"Locale '{locale}' not mapped to any language code.")
+    req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelFast)
+    lst, _ = req.supportedRecognitionLanguagesAndReturnError_(None)
+    for locale in lst:
+        if locale in locale_to_lang_code:
+            supported_languages_fast.append(locale_to_lang_code[locale])
+        else:
+            log.debug(f"Locale '{locale}' not mapped to any language code.")
 
 
 def ocr_macos_live_text(image_file: Path, options) -> tuple[list[Textbox], int, int]:
@@ -134,7 +147,7 @@ def ocr_macos_live_text(image_file: Path, options) -> tuple[list[Textbox], int, 
         )
         _, error = request_handler.performRequests_error_([recognize_request], None)
         if error:
-            raise RuntimeError(f"Error in Live Text {error=}")
+            raise RuntimeError(f"Error in performing VNRecognizeTextRequest: {error=}")
         res = [read_observation(o, width, height) for o in recognize_request.results()]
     return res, width, height
 
@@ -222,6 +235,11 @@ def check_options(options):
     if options.languages:
         if len(options.languages) == 1 and options.languages[0] == "und":
             options.languages = []
+        supported_languages = (
+            supported_languages_accurate
+            if options.appleocr_recognition_level == "accurate"
+            else supported_languages_fast
+        )
         for lang in options.languages:
             if "+" in lang:
                 raise ExitCodeException(
@@ -230,7 +248,7 @@ def check_options(options):
             if lang not in supported_languages:
                 raise ExitCodeException(
                     15,
-                    f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
+                    f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)} in {options.appleocr_recognition_level} mode). Use 'und' for undetermined language.",
                 )
 
     # Need to populate this value, as OCRmyPDF core uses it to determine if OCR should be performed.
@@ -263,7 +281,11 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def languages(options):
-        return supported_languages
+        return (
+            supported_languages_accurate
+            if options.appleocr_recognition_level == "accurate"
+            else supported_languages_fast
+        )
 
     @staticmethod
     def get_orientation(input_file, options):
