@@ -129,7 +129,7 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
-        logging.info("Starting OCR with Apple Vision Framework (hOCR renderer)...")
+        logging.debug("Starting OCR with Apple Vision Framework (hOCR renderer)...")
 
         ocr_result, width, height, _ = perform_ocr(Path(input_file), options)
 
@@ -143,7 +143,7 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
-        logging.info("Starting OCR with Apple Vision Framework (sandwich renderer)...")
+        logging.debug("Starting OCR with Apple Vision Framework (sandwich renderer)...")
 
         (
             res,
