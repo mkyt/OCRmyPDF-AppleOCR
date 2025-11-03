@@ -66,6 +66,10 @@ def add_options(parser):
 def check_options(options):
     if options.languages:
         if len(options.languages) == 1 and options.languages[0] == "und":
+            if options.appleocr_recognition_mode == "livetext":
+                raise ExitCodeException(
+                    15, "Language detection is not supported by LiveText mode in Apple OCR"
+                )
             options.languages = []
         supported_languages = AppleOCREngine.languages(options)
         for lang in options.languages:
@@ -125,7 +129,7 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
-        logging.info("Starting OCR with Apple Vision Framework...")
+        logging.info("Starting OCR with Apple Vision Framework (hOCR renderer)...")
 
         ocr_result, width, height, _ = perform_ocr(Path(input_file), options)
 
@@ -139,6 +143,8 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
+        logging.info("Starting OCR with Apple Vision Framework (sandwich renderer)...")
+
         (
             res,
             w,
@@ -146,8 +152,6 @@ class AppleOCREngine(OcrEngine):
             dpi,
         ) = perform_ocr(Path(input_file), options)
         plaintext = "\n".join(tb.text for tb in res)
-
-        print("generating PDF")
 
         generate_pdf(dpi, w, h, 1.0, res, Path(output_pdf), True)
 
