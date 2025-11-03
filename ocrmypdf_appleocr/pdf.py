@@ -266,7 +266,7 @@ def generate_text_content_stream(
     """Generate a content stream for the described by results.
 
     Args:
-        results (Iterable[EasyOCRResult]): Results of OCR.
+        results (Iterable[Textbox]): Results of OCR.
         scale (tuple[float, float]): Scale of the image.
         height (int): Height of the image.
 
@@ -335,7 +335,7 @@ def generate_pdf(
     output_pdf: Path,
     boxes: bool,
 ):
-    """Convert EasyOCR results to a PDF with text annotations (no images).
+    """Convert OCR results to a PDF with text annotations (no images).
 
     Args:
         dpi: DPI of the OCR image.
