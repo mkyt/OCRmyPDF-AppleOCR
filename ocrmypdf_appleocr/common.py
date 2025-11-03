@@ -49,30 +49,3 @@ lang_code_to_locale = {
 }
 
 locale_to_lang_code = {v: k for k, v in lang_code_to_locale.items()}
-
-lang_code_two_letter_to_three_letter = {
-    "en": "eng",
-    "fr": "fra",
-    "it": "ita",
-    "de": "deu",
-    "es": "spa",
-    "pt": "por",
-    "zh-cn": "chi_sim",
-    "zh-tw": "chi_tra",
-    "ko": "kor",
-    "ja": "jpn",
-    "ru": "rus",
-    "uk": "ukr",
-    "th": "tha",
-    "vi": "vie",
-    "ar": "ara",
-    "tr": "tur",
-    "id": "ind",
-    "cs": "ces",
-    "da": "dan",
-    "nl": "nld",
-    "no": "nor",
-    "pl": "pol",
-    "ro": "ron",
-    "sv": "swe",
-}
