@@ -2,209 +2,38 @@ import logging
 import platform
 from pathlib import Path
 
-import Cocoa
-import langdetect
-import objc
 import pluggy
-import Vision
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
 from PIL import Image
 
+from ocrmypdf_appleocr.common import Textbox, lang_code_to_locale, log
+from ocrmypdf_appleocr.hocr import build_hocr_document
+from ocrmypdf_appleocr.livetext import (
+    livetext_supported,
+    ocr_VKCImageAnalyzerRequest,
+    supported_languages_livetext,
+)
+from ocrmypdf_appleocr.vision import (
+    ocr_VNRecognizeTextRequest,
+    supported_languages_accurate,
+    supported_languages_fast,
+)
+
 __version__ = "0.2.4"
 
-log = logging.getLogger(__name__)
 
+def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int]:
+    width, height = Image.open(image).size
 
-Textbox = tuple[str, float, float, float, float, float]
-
-lang_code_to_locale = {
-    "eng": "en-US",
-    "fra": "fr-FR",
-    "ita": "it-IT",
-    "deu": "de-DE",
-    "spa": "es-ES",
-    "por": "pt-BR",
-    "chi_sim": "zh-Hans",
-    "chi_tra": "zh-Hant",
-    "yue_sim": "yue-Hans",
-    "yue_tra": "yue-Hant",
-    "kor": "ko-KR",
-    "jpn": "ja-JP",
-    "rus": "ru-RU",
-    "ukr": "uk-UA",
-    "tha": "th-TH",
-    "vie": "vi-VT",
-    "ara": "ar-SA",
-    "ars": "ars-SA",
-    "tur": "tr-TR",
-    "ind": "id-ID",
-    "ces": "cs-CZ",
-    "dan": "da-DK",
-    "nld": "nl-NL",
-    "nor": "no-NO",
-    "nno": "nn-NO",
-    "nob": "nb-NO",
-    "msa": "ms-MY",
-    "pol": "pl-PL",
-    "ron": "ro-RO",
-    "swe": "sv-SE",
-}
-
-locale_to_lang_code = {v: k for k, v in lang_code_to_locale.items()}
-
-lang_code_two_letter_to_three_letter = {
-    "en": "eng",
-    "fr": "fra",
-    "it": "ita",
-    "de": "deu",
-    "es": "spa",
-    "pt": "por",
-    "zh-cn": "chi_sim",
-    "zh-tw": "chi_tra",
-    "ko": "kor",
-    "ja": "jpn",
-    "ru": "rus",
-    "uk": "ukr",
-    "th": "tha",
-    "vi": "vie",
-    "ar": "ara",
-    "tr": "tur",
-    "id": "ind",
-    "cs": "ces",
-    "da": "dan",
-    "nl": "nld",
-    "no": "nor",
-    "pl": "pol",
-    "ro": "ron",
-    "sv": "swe",
-}
-
-supported_languages_accurate: list[str] = []
-supported_languages_fast: list[str] = []
-with objc.autorelease_pool():
-    req = Vision.VNRecognizeTextRequest.alloc().init()
-    req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-    lst, _ = req.supportedRecognitionLanguagesAndReturnError_(None)
-    for locale in lst:
-        if locale in locale_to_lang_code:
-            supported_languages_accurate.append(locale_to_lang_code[locale])
-        else:
-            log.debug(f"Locale '{locale}' not mapped to any language code.")
-    req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelFast)
-    lst, _ = req.supportedRecognitionLanguagesAndReturnError_(None)
-    for locale in lst:
-        if locale in locale_to_lang_code:
-            supported_languages_fast.append(locale_to_lang_code[locale])
-        else:
-            log.debug(f"Locale '{locale}' not mapped to any language code.")
-
-
-def ocr_macos_live_text(image_file: Path, options) -> tuple[list[Textbox], int, int]:
-    def read_observation(
-        o: Vision.VNRecognizedTextObservation, image_width: int, image_height: int
-    ) -> Textbox:
-        recognized_text: Vision.VNRecognizedText = o.topCandidates_(1)[0]
-        bb = o.boundingBox()
-        x, y, w, h = (
-            bb.origin.x,
-            1 - bb.origin.y - bb.size.height,
-            bb.size.width,
-            bb.size.height,
-        )
-        confidence = recognized_text.confidence()
-        text = recognized_text.string()
-        return (
-            text,
-            int(x * image_width),
-            int(y * image_height),
-            int(w * image_width),
-            int(h * image_height),
-            int(confidence * 100),
-        )
-
-    width, height = Image.open(image_file).size
-
-    with objc.autorelease_pool():
-        recognize_request = Vision.VNRecognizeTextRequest.alloc().init()
-        if options.languages:
-            locales = [lang_code_to_locale.get(lang, lang) for lang in options.languages]
-            recognize_request.setAutomaticallyDetectsLanguage_(False)
-            recognize_request.setRecognitionLanguages_(locales)
-        else:
-            log.debug("Using automatic language detection.")
-            recognize_request.setAutomaticallyDetectsLanguage_(True)
-        if options.appleocr_disable_correction:
-            recognize_request.setUsesLanguageCorrection_(False)
-        else:
-            recognize_request.setUsesLanguageCorrection_(True)
-        level = options.appleocr_recognition_level
-        if level == "fast":
-            recognize_request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelFast)
-        request_handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(
-            Cocoa.NSURL.fileURLWithPath_(image_file.absolute().as_posix()), None
-        )
-        _, error = request_handler.performRequests_error_([recognize_request], None)
-        if error:
-            raise RuntimeError(f"Error in performing VNRecognizeTextRequest: {error=}")
-        res = [read_observation(o, width, height) for o in recognize_request.results()]
-    return res, width, height
-
-
-def build_hocr_line(textbox: Textbox, page_number: int, line_number: int, lang: str) -> str:
-    text, x, y, w, h, confidence = textbox
-    bbox = f"bbox {x} {y} {x + w} {y + h}"
-    text = (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&apos;")
-    )
-    return f"""<div class="ocr_carea" id="block_{page_number}_{line_number}" title="{bbox}">
-<p class="ocr_par" id="par_{page_number}_{line_number}" lang="{lang}" title="{bbox}">
-  <span class="ocr_line" id="line_{page_number}_{line_number}" title="{bbox}">
-    <span class="ocrx_word" id="word_{page_number}_{line_number}" title="{bbox}; x_wconf {confidence}">{text}</span>
-  </span>
-</p>
-</div>
-"""
-
-
-hocr_template = """<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
-    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
-<head>
-<title></title>
-<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
-<meta name="ocr-system" content="" />
-<meta name="ocr-capabilities" content="ocr_page ocr_carea ocr_par ocr_line ocrx_word"/>
-</head>
-<body>
-<div class="ocr_page" id="page_0" title="bbox 0 0 {width} {height}">
-{content}
-</div>
-</body>
-</html>
-"""
-
-
-def build_hocr_document(image: Path, options) -> tuple[str, str]:
-    textboxes, width, height = ocr_macos_live_text(image, options)
-    plaintext = "\n".join(tb[0] for tb in textboxes)
-    if options.languages and len(options.languages) == 1:
-        lang = options.languages[0]
+    if options.appleocr_recognition_mode == "livetext":
+        locales = [lang_code_to_locale.get(lang, lang) for lang in options.languages]
+        textboxes = ocr_VKCImageAnalyzerRequest(image, width, height, locales)
     else:
-        try:
-            lang_ISO639_2 = langdetect.detect(plaintext)
-            lang = lang_code_two_letter_to_three_letter.get(lang_ISO639_2, "und")
-        except Exception:
-            lang = "und"
-    content = "".join(build_hocr_line(tb, 0, i, lang) for i, tb in enumerate(textboxes))
-    hocr = hocr_template.format(content=content, width=width, height=height)
-    return hocr, plaintext
+        textboxes = ocr_VNRecognizeTextRequest(image, width, height, options)
+
+    return textboxes, width, height
 
 
 @hookimpl
@@ -223,10 +52,10 @@ def add_options(parser):
         default=False,
     )
     appleocr_options.add_argument(
-        "--appleocr-recognition-level",
-        choices=["fast", "accurate"],
-        default="accurate",
-        help="Recognition level for Apple Vision OCR (default: accurate)",
+        "--appleocr-recognition-mode",
+        choices=["fast", "accurate", "livetext"],
+        default="livetext" if livetext_supported else "accurate",
+        help="Recognition mode for Apple Vision OCR (default: accurate for macOS 12 and earlier, livetext for macOS 13 and later)",
     )
 
 
@@ -235,11 +64,7 @@ def check_options(options):
     if options.languages:
         if len(options.languages) == 1 and options.languages[0] == "und":
             options.languages = []
-        supported_languages = (
-            supported_languages_accurate
-            if options.appleocr_recognition_level == "accurate"
-            else supported_languages_fast
-        )
+        supported_languages = AppleOCREngine.languages(options)
         for lang in options.languages:
             if "+" in lang:
                 raise ExitCodeException(
@@ -248,7 +73,7 @@ def check_options(options):
             if lang not in supported_languages:
                 raise ExitCodeException(
                     15,
-                    f"Language '{lang}' is not supported by Apple OCR (engine supports: {', '.join(supported_languages)} in {options.appleocr_recognition_level} mode). Use 'und' for undetermined language.",
+                    f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
                 )
 
     # Need to populate this value, as OCRmyPDF core uses it to determine if OCR should be performed.
@@ -281,11 +106,12 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def languages(options):
-        return (
-            supported_languages_accurate
-            if options.appleocr_recognition_level == "accurate"
-            else supported_languages_fast
-        )
+        if options.appleocr_recognition_mode == "livetext":
+            return supported_languages_livetext
+        elif options.appleocr_recognition_mode == "accurate":
+            return supported_languages_accurate
+        else:
+            return supported_languages_fast
 
     @staticmethod
     def get_orientation(input_file, options):
@@ -301,7 +127,11 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_hocr(input_file, output_hocr, output_text, options):
-        hocr, plaintext = build_hocr_document(Path(input_file), options)
+        logging.info("Starting OCR with Apple Vision Framework...")
+
+        ocr_result, width, height = perform_ocr(Path(input_file), options)
+
+        hocr, plaintext = build_hocr_document(ocr_result, options.languages, width, height)
         with open(output_hocr, "w", encoding="utf-8") as f:
             f.write(hocr)
         with open(output_text, "w", encoding="utf-8") as f:
