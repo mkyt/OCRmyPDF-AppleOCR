@@ -1,6 +1,4 @@
-import langdetect
-
-from ocrmypdf_appleocr.common import Textbox, lang_code_two_letter_to_three_letter
+from ocrmypdf_appleocr.common import Textbox
 
 
 def build_hocr_line(textbox: Textbox, page_number: int, line_number: int, lang: str) -> str:
@@ -42,14 +40,6 @@ hocr_template = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def build_hocr_document(ocr_result: list[Textbox], languages, width, height) -> str:
-    if languages and len(languages) == 1:
-        lang = languages[0]
-    else:
-        try:
-            lang_ISO639_2 = langdetect.detect(plaintext)
-            lang = lang_code_two_letter_to_three_letter.get(lang_ISO639_2, "und")
-        except Exception:
-            lang = "und"
-    content = "".join(build_hocr_line(tb, 0, i, lang) for i, tb in enumerate(ocr_result))
+def build_hocr_document(ocr_result: list[Textbox], width, height) -> str:
+    content = "".join(build_hocr_line(tb, 0, i, "und") for i, tb in enumerate(ocr_result))
     return hocr_template.format(content=content, width=width, height=height)

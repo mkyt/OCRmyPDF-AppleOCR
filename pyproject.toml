@@ -7,9 +7,9 @@ dependencies = [
   "pyobjc-core",
   "pyobjc-framework-Vision",
   "pyobjc-framework-Cocoa",
-  "langdetect",
   "ocrmypdf>=14.2.1",
   "Pillow>=10.0.1",
+  "pikepdf>=8.10.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

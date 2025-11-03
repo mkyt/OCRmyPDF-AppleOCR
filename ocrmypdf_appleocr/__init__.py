@@ -131,7 +131,7 @@ class AppleOCREngine(OcrEngine):
 
         plaintext = "\n".join(tb.text for tb in ocr_result)
 
-        hocr = build_hocr_document(ocr_result, options.languages, width, height)
+        hocr = build_hocr_document(ocr_result, width, height)
         with open(output_hocr, "w", encoding="utf-8") as f:
             f.write(hocr)
         with open(output_text, "w", encoding="utf-8") as f:
