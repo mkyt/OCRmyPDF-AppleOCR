@@ -68,7 +68,7 @@ def ocr_VNRecognizeTextRequest(image_file: Path, width: int, height: int, option
             confidence = recognized_text.confidence()
             text = recognized_text.string()
             res.append(
-                (
+                Textbox(
                     text,
                     int(x * width),
                     int(y * height),

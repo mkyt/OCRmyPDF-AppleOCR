@@ -1,9 +1,19 @@
 import logging
 
 log = logging.getLogger(__name__)
+from typing import NamedTuple
 
 
-Textbox = tuple[str, float, float, float, float, float]
+class Textbox(NamedTuple):
+    """Represents a text box in the document. (bounding box is in image pixel coordinates)"""
+
+    text: str
+    x: int
+    y: int
+    w: int
+    h: int
+    confidence: int  # 0-100
+
 
 lang_code_to_locale = {
     "eng": "en-US",

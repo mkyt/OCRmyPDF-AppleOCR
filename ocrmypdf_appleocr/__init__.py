@@ -15,17 +15,20 @@ from ocrmypdf_appleocr.livetext import (
     ocr_VKCImageAnalyzerRequest,
     supported_languages_livetext,
 )
+from ocrmypdf_appleocr.pdf import generate_pdf
 from ocrmypdf_appleocr.vision import (
     ocr_VNRecognizeTextRequest,
     supported_languages_accurate,
     supported_languages_fast,
 )
 
-__version__ = "0.2.4"
+__version__ = "0.3.0"
 
 
-def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int]:
-    width, height = Image.open(image).size
+def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[int, int]]:
+    im = Image.open(image)
+    width, height = im.size
+    dpi = im.info["dpi"]
 
     if options.appleocr_recognition_mode == "livetext":
         locales = [lang_code_to_locale.get(lang, lang) for lang in options.languages]
@@ -33,7 +36,7 @@ def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int]:
     else:
         textboxes = ocr_VNRecognizeTextRequest(image, width, height, options)
 
-    return textboxes, width, height
+    return textboxes, width, height, dpi
 
 
 @hookimpl
@@ -81,12 +84,7 @@ def check_options(options):
     options.tesseract_timeout = 1
 
     if options.pdf_renderer == "auto":
-        options.pdf_renderer = "hocr"
-    elif options.pdf_renderer == "sandwich":
-        raise ExitCodeException(
-            15,
-            "AppleOCR plugin does not support the sandwich renderer. Use --pdf-renderer=hocr instead.",
-        )
+        options.pdf_renderer = "sandwich"
 
 
 class AppleOCREngine(OcrEngine):
@@ -129,9 +127,11 @@ class AppleOCREngine(OcrEngine):
     def generate_hocr(input_file, output_hocr, output_text, options):
         logging.info("Starting OCR with Apple Vision Framework...")
 
-        ocr_result, width, height = perform_ocr(Path(input_file), options)
+        ocr_result, width, height, _ = perform_ocr(Path(input_file), options)
 
-        hocr, plaintext = build_hocr_document(ocr_result, options.languages, width, height)
+        plaintext = "\n".join(tb.text for tb in ocr_result)
+
+        hocr = build_hocr_document(ocr_result, options.languages, width, height)
         with open(output_hocr, "w", encoding="utf-8") as f:
             f.write(hocr)
         with open(output_text, "w", encoding="utf-8") as f:
@@ -139,9 +139,20 @@ class AppleOCREngine(OcrEngine):
 
     @staticmethod
     def generate_pdf(input_file, output_pdf, output_text, options):
-        raise NotImplementedError(
-            "AppleOCR plugin does not support the sandwich renderer. Use --pdf-renderer=hocr instead."
-        )
+        (
+            res,
+            w,
+            h,
+            dpi,
+        ) = perform_ocr(Path(input_file), options)
+        plaintext = "\n".join(tb.text for tb in res)
+
+        print("generating PDF")
+
+        generate_pdf(dpi, w, h, 1.0, res, Path(output_pdf), True)
+
+        with open(output_text, "w", encoding="utf-8") as f:
+            f.write(plaintext)
 
 
 @hookimpl

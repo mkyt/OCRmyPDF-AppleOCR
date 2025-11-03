@@ -42,9 +42,7 @@ hocr_template = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def build_hocr_document(ocr_result: list[Textbox], languages, width, height) -> tuple[str, str]:
-    plaintext = "\n".join(tb[0] for tb in ocr_result)
-
+def build_hocr_document(ocr_result: list[Textbox], languages, width, height) -> str:
     if languages and len(languages) == 1:
         lang = languages[0]
     else:
@@ -54,5 +52,4 @@ def build_hocr_document(ocr_result: list[Textbox], languages, width, height) -> 
         except Exception:
             lang = "und"
     content = "".join(build_hocr_line(tb, 0, i, lang) for i, tb in enumerate(ocr_result))
-    hocr = hocr_template.format(content=content, width=width, height=height)
-    return hocr, plaintext
+    return hocr_template.format(content=content, width=width, height=height)

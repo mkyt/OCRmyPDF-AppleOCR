@@ -60,13 +60,13 @@ def _ocr_VKCImageAnalyzerRequest_child_main(
 
     def _process_handler(analysis, error):
         nonlocal result
-        lines = []
+        lines: list[Textbox] = []
         response_lines = analysis.allLines()
         if response_lines:
             for l in response_lines:
                 l_bbox = l.quad().boundingBox()
                 lines.append(
-                    (
+                    Textbox(
                         l.string(),
                         int(l_bbox.origin.x * width),
                         int(l_bbox.origin.y * height),
