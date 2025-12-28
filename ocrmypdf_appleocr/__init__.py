@@ -22,7 +22,7 @@ from ocrmypdf_appleocr.vision import (
     supported_languages_fast,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[int, int]]:
