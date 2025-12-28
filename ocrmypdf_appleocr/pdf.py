@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import importlib.resources
+import math
 from collections.abc import Iterable
 from pathlib import Path
-from typing import NamedTuple
 
 from pikepdf import (
     ContentStreamInstruction,
@@ -25,62 +25,6 @@ TEXT_POSITION_DEBUG = False
 GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_appleocr", "pdf.ttf")
 CHAR_ASPECT = 2
 FONT_NAME = Name("/f-0-0")
-
-
-class BBox(NamedTuple):
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-
-
-def pt_from_pixel(bbox: Textbox, scale: tuple[float, float], height: int):
-    """Convert pixel coordinates to PDF points.
-      llx, lly, urx, ury
-    where origin is at bottom-left corner
-    """
-    x1 = bbox.x * scale[0]
-    y1 = (height - bbox.y - bbox.h) * scale[1]
-    x2 = (bbox.x + bbox.w) * scale[0]
-    y2 = (height - bbox.y) * scale[1]
-    return BBox(x1, y1, x2, y2)
-
-
-def bbox_string(bbox: BBox):
-    return str(bbox)
-
-
-def contains_cjk(text: str) -> bool:
-    for ch in text:
-        codepoint = ord(ch)
-        if (
-            0x4E00 <= codepoint <= 0x9FFF  # CJK Unified Ideographs
-            or 0x3400 <= codepoint <= 0x4DBF  # CJK Unified Ideographs Extension A
-            or 0x20000 <= codepoint <= 0x2CEAF  # Extensions B-F
-            or 0xF900 <= codepoint <= 0xFAFF  # CJK Compatibility Ideographs
-            or 0x2F800 <= codepoint <= 0x2FA1F  # Compatibility Supplement
-            or 0x3040 <= codepoint <= 0x30FF  # Hiragana/Katakana
-            or 0x31F0 <= codepoint <= 0x31FF  # Katakana Phonetic Extensions
-            or 0xAC00 <= codepoint <= 0xD7A3  # Hangul Syllables
-        ):
-            return True
-    return False
-
-
-def should_render_vertical(textbox: Textbox) -> bool:
-    text = textbox.text.strip()
-    if len(text) <= 1:
-        return False
-    if textbox.w <= 0 or textbox.h <= 0:
-        return False
-    if not contains_cjk(text):
-        return False
-
-    aspect_ratio = textbox.h / textbox.w
-    if aspect_ratio < 1.2:
-        return False
-
-    return True
 
 
 def register_glyphlessfont(pdf: Pdf):
@@ -250,6 +194,21 @@ class ContentStreamBuilder:
         inst = [ContentStreamInstruction([], Operator("S"))]
         return ContentStreamBuilder(self._instructions + inst)
 
+    def m(self, x: float, y: float):
+        """Move to point (x, y)."""
+        inst = [ContentStreamInstruction([x, y], Operator("m"))]
+        return ContentStreamBuilder(self._instructions + inst)
+
+    def l(self, x: float, y: float):
+        """Draw line to point (x, y)."""
+        inst = [ContentStreamInstruction([x, y], Operator("l"))]
+        return ContentStreamBuilder(self._instructions + inst)
+
+    def h(self):
+        """Close path."""
+        inst = [ContentStreamInstruction([], Operator("h"))]
+        return ContentStreamBuilder(self._instructions + inst)
+
     def build(self):
         return self._instructions
 
@@ -277,27 +236,50 @@ def generate_text_content_stream(
     cs = ContentStreamBuilder()
     cs = cs.add(cs.q())
     for n, result in enumerate(results):
-        bbox = pt_from_pixel(result, scale, height)
-
         text = result.text
-        box_width = bbox.x2 - bbox.x1
-        box_height = bbox.y2 - bbox.y1
+        # bbox is in up-left origin, pixel coordinates
+        bbox = result.bb
+        box_width = bbox.true_width() * scale[0]
+        box_height = bbox.true_height() * scale[1]
+        angle = -bbox.angle()  # PDF coordinate is y-up, so negate the angle
+        ulx = bbox.ul.x * scale[0]
+        uly = (height - bbox.ul.y) * scale[1]
+        llx = bbox.ll.x * scale[0]
+        lly = (height - bbox.ll.y) * scale[1]
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
 
         if len(text) == 0 or box_width <= 0 or box_height <= 0:
             continue
 
-        vertical = should_render_vertical(result)
+        vertical = result.is_vertical
 
-        log.debug(f"Textline '{text}' PDF bbox: {bbox_string(bbox)} vertical: {vertical}")
+        log.debug(
+            f"Textline '{text}' bbox (in px): {bbox} vertical: {vertical}, angle: {angle}, box_width: {box_width}, box_height: {box_height}"
+        )
 
         if vertical:
             font_size = box_width
             stretch = 100.0 * box_height / len(text) / font_size * CHAR_ASPECT
-            tm_args = (0, -font_size, font_size, 0, bbox.x1, bbox.y2)
+            tm_args = (
+                font_size * sin_a,
+                -font_size * cos_a,
+                font_size * cos_a,
+                -font_size * sin_a,
+                ulx,
+                uly,
+            )
         else:
             font_size = box_height
             stretch = 100.0 * box_width / len(text) / font_size * CHAR_ASPECT
-            tm_args = (font_size, 0, 0, font_size, bbox.x1, bbox.y1)
+            tm_args = (
+                font_size * cos_a,
+                font_size * sin_a,
+                -font_size * sin_a,
+                font_size * cos_a,
+                llx,
+                lly,
+            )
 
         cs = cs.add(
             ContentStreamBuilder()
@@ -312,12 +294,20 @@ def generate_text_content_stream(
             .ET()
         )
         if boxes:
+            urx = bbox.ur.x * scale[0]
+            ury = (height - bbox.ur.y) * scale[1]
+            lrx = bbox.lr.x * scale[0]
+            lry = (height - bbox.lr.y) * scale[1]
             cs = cs.add(
                 ContentStreamBuilder()
                 .q()
                 .RG(1.0, 0.0, 0.0)
                 .w(0.75)
-                .re(bbox.x1, bbox.y1, box_width, box_height)
+                .m(ulx, uly)
+                .l(urx, ury)
+                .l(lrx, lry)
+                .l(llx, lly)
+                .h()
                 .S()
                 .Q()
             )

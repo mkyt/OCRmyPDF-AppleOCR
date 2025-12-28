@@ -2,8 +2,11 @@ from ocrmypdf_appleocr.common import Textbox
 
 
 def build_hocr_line(textbox: Textbox, page_number: int, line_number: int, lang: str) -> str:
-    text, x, y, w, h, confidence = textbox
-    bbox = f"bbox {x} {y} {x + w} {y + h}"
+    text, bb, confidence, is_vert = textbox
+    if not is_vert:
+        bbox = f"{bb.to_hocr_bbox()}; {bb.estimated_baseline()}"
+    else:
+        bbox = f"{bb.to_hocr_bbox()}"
     text = (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")

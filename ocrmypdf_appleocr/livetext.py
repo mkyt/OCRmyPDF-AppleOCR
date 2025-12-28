@@ -1,3 +1,4 @@
+import math
 import multiprocessing as mp
 import platform
 from pathlib import Path
@@ -9,7 +10,7 @@ from PyObjCTools import AppHelper
 
 Vision  # to silence unused import warning
 
-from ocrmypdf_appleocr.common import Textbox, locale_to_lang_code, log
+from ocrmypdf_appleocr.common import BoundingBox, Point, Textbox, locale_to_lang_code, log
 
 livetext_supported = int(platform.mac_ver()[0].split(".")[0]) >= 13  # macOS Ventura or later
 supported_languages_livetext: list[str] = []
@@ -64,15 +65,42 @@ def _ocr_VKCImageAnalyzerRequest_child_main(
         response_lines = analysis.allLines()
         if response_lines:
             for l in response_lines:
-                l_bbox = l.quad().boundingBox()
+                pts = []
+                quad = l.quad()
+                pts.append((quad.topLeft().x * width, quad.topLeft().y * height))
+                pts.append((quad.topRight().x * width, quad.topRight().y * height))
+                pts.append((quad.bottomRight().x * width, quad.bottomRight().y * height))
+                pts.append((quad.bottomLeft().x * width, quad.bottomLeft().y * height))
+                cx = sum(p[0] for p in pts) / 4.0
+                cy = sum(p[1] for p in pts) / 4.0
+
+                # sort points in CW order in x-right, y-down coordinate system
+                pts.sort(key=lambda p: math.atan2(p[1] - cy, p[0] - cx))
+
+                ideal_ul_angle = -3 * math.pi / 4
+                min_diff = float("inf")
+                ul_index = -1
+                for i, p in enumerate(pts):
+                    angle = math.atan2(p[1] - cy, p[0] - cx)
+                    diff = abs(angle - ideal_ul_angle)
+                    if diff > math.pi:
+                        diff = abs(diff - 2 * math.pi)
+                    if diff < min_diff:
+                        min_diff = diff
+                        ul_index = i
+                ul = Point(int(pts[ul_index][0]), int(pts[ul_index][1]))
+                ur = Point(int(pts[(ul_index + 1) % 4][0]), int(pts[(ul_index + 1) % 4][1]))
+                lr = Point(int(pts[(ul_index + 2) % 4][0]), int(pts[(ul_index + 2) % 4][1]))
+                ll = Point(int(pts[(ul_index + 3) % 4][0]), int(pts[(ul_index + 3) % 4][1]))
+                bb = BoundingBox(ul, ur, ll, lr)
+                # https://github.com/WebKit/WebKit/blob/main/Source/WebKit/Platform/cocoa/ImageAnalysisUtilities.mm
+                is_vert = l.layoutDirection() == 5
                 lines.append(
                     Textbox(
                         l.string(),
-                        int(l_bbox.origin.x * width),
-                        int(l_bbox.origin.y * height),
-                        int(l_bbox.size.width * width),
-                        int(l_bbox.size.height * height),
-                        100,  # VKCImageAnalyzer does not provide confidence score
+                        bb,
+                        100,  # VKCImageAnalyzer does not provide confidence score,
+                        is_vert,
                     )
                 )
         AppHelper.stopEventLoop()

@@ -4,7 +4,14 @@ import Cocoa
 import objc
 import Vision
 
-from ocrmypdf_appleocr.common import Textbox, lang_code_to_locale, locale_to_lang_code, log
+from ocrmypdf_appleocr.common import (
+    BoundingBox,
+    Point,
+    Textbox,
+    lang_code_to_locale,
+    locale_to_lang_code,
+    log,
+)
 
 supported_languages_accurate: list[str] = []
 supported_languages_fast: list[str] = []
@@ -58,23 +65,28 @@ def ocr_VNRecognizeTextRequest(image_file: Path, width: int, height: int, option
         res: list[Textbox] = []
         for o in recognize_request.results():
             recognized_text: Vision.VNRecognizedText = o.topCandidates_(1)[0]
-            bb = o.boundingBox()
-            x, y, w, h = (
-                bb.origin.x,
-                1 - bb.origin.y - bb.size.height,
-                bb.size.width,
-                bb.size.height,
+            bb = o.boundingBox()  # bb in bottom-left origin, normalized coordinates
+            b = BoundingBox(  # b in upper-left origin, pixel coordinates
+                Point(
+                    int(bb.origin.x * width), int((1 - bb.origin.y - bb.size.height) * height)
+                ),  # ul
+                Point(
+                    int((bb.origin.x + bb.size.width) * width),
+                    int((1 - bb.origin.y - bb.size.height) * height),
+                ),  # ur
+                Point(int(bb.origin.x * width), int((1 - bb.origin.y) * height)),  # ll
+                Point(
+                    int((bb.origin.x + bb.size.width) * width), int((1 - bb.origin.y) * height)
+                ),  # lr
             )
             confidence = recognized_text.confidence()
             text = recognized_text.string()
             res.append(
                 Textbox(
                     text,
-                    int(x * width),
-                    int(y * height),
-                    int(w * width),
-                    int(h * height),
+                    b,
                     int(confidence * 100),
+                    False,  # VNRecognizeTextRequest does not provide orientation info
                 )
             )
     return res
