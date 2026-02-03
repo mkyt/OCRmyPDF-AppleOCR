@@ -7,7 +7,7 @@ dependencies = [
   "pyobjc-core",
   "pyobjc-framework-Vision",
   "pyobjc-framework-Cocoa",
-  "ocrmypdf>=14.2.1",
+  "ocrmypdf>=14.2.1,<17",
   "Pillow>=10.0.1",
   "pikepdf>=8.10.1",
 ]
