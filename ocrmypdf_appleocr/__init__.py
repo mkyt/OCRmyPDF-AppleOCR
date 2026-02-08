@@ -2,6 +2,7 @@ import logging
 import platform
 from pathlib import Path
 
+import ocrmypdf
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
@@ -21,7 +22,7 @@ from ocrmypdf_appleocr.vision import (
     supported_languages_fast,
 )
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 
 def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[int, int]]:
@@ -146,6 +147,21 @@ class AppleOCREngine(OcrEngine):
             f.write(plaintext)
 
 
-@hookimpl
-def get_ocr_engine():
-    return AppleOCREngine()
+if ocrmypdf.__version__ >= "17.0.0":
+
+    @hookimpl
+    def get_ocr_engine(options):
+        if options is not None:
+            ocr_engine = getattr(options, "ocr_engine", "auto")
+            log.debug(f"Specified OCR engine: {ocr_engine}")
+            if ocr_engine not in ("auto", "appleocr"):
+                return None
+        log.debug("  Using AppleOCR engine")
+        return AppleOCREngine()
+
+else:
+
+    @hookimpl
+    def get_ocr_engine():
+        log.debug("Using AppleOCR engine")
+        return AppleOCREngine()
