@@ -8,6 +8,7 @@ from ocrmypdf_appleocr.common import (
     BoundingBox,
     Point,
     Textbox,
+    is_undetermined_language,
     lang_code_to_locale,
     locale_to_lang_code,
     log,
@@ -36,13 +37,13 @@ with objc.autorelease_pool():
 def ocr_VNRecognizeTextRequest(image_file: Path, width: int, height: int, options) -> list[Textbox]:
     with objc.autorelease_pool():
         recognize_request = Vision.VNRecognizeTextRequest.alloc().init()
-        if options.languages:
+        if is_undetermined_language(options):
+            log.debug("Using automatic language detection.")
+            recognize_request.setAutomaticallyDetectsLanguage_(True)
+        elif options.languages:
             locales = [lang_code_to_locale.get(lang, lang) for lang in options.languages]
             recognize_request.setAutomaticallyDetectsLanguage_(False)
             recognize_request.setRecognitionLanguages_(locales)
-        else:
-            log.debug("Using automatic language detection.")
-            recognize_request.setAutomaticallyDetectsLanguage_(True)
         if options.appleocr_disable_correction:
             recognize_request.setUsesLanguageCorrection_(False)
         else:

@@ -7,7 +7,7 @@ from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
 from PIL import Image
 
-from ocrmypdf_appleocr.common import Textbox, lang_code_to_locale, log
+from ocrmypdf_appleocr.common import Textbox, is_undetermined_language, lang_code_to_locale, log
 from ocrmypdf_appleocr.hocr import build_hocr_document
 from ocrmypdf_appleocr.livetext import (
     livetext_supported,
@@ -58,12 +58,10 @@ def add_options(parser):
 @hookimpl
 def check_options(options):
     if options.languages:
-        if len(options.languages) == 1 and options.languages[0] == "und":
-            if options.appleocr_recognition_mode == "livetext":
-                raise ExitCodeException(
-                    15, "Language detection is not supported by LiveText mode in Apple OCR"
-                )
-            options.languages = []
+        if options.appleocr_recognition_mode == "livetext" and is_undetermined_language(options):
+            raise ExitCodeException(
+                15, "Language detection is not supported by LiveText mode in Apple OCR"
+            )
         supported_languages = AppleOCREngine.languages(options)
         for lang in options.languages:
             if "+" in lang:

@@ -92,3 +92,9 @@ lang_code_to_locale = {
 }
 
 locale_to_lang_code = {v: k for k, v in lang_code_to_locale.items()}
+
+
+def is_undetermined_language(options) -> bool:
+    if options.languages and len(options.languages) == 1 and options.languages[0] == "und":
+        return True
+    return False
