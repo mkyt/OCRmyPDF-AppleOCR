@@ -7,7 +7,7 @@ dependencies = [
   "pyobjc-core",
   "pyobjc-framework-Vision",
   "pyobjc-framework-Cocoa",
-  "ocrmypdf>=14.2.1,<17",
+  "ocrmypdf>=14.2.1",
   "Pillow>=10.0.1",
   "pikepdf>=8.10.1",
 ]
@@ -66,4 +66,3 @@ ocrmypdf_appleocr = ["pdf.ttf"]
 line-length = 100
 lint = { select = ["E", "W", "F", "I", "B", "UP", "SIM"] }
 format = { quote-style = "double", indent-style = "space" }
-

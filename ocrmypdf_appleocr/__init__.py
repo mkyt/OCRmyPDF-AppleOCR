@@ -2,7 +2,6 @@ import logging
 import platform
 from pathlib import Path
 
-import pluggy
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
@@ -37,12 +36,6 @@ def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[in
         textboxes = ocr_VNRecognizeTextRequest(image, width, height, options)
 
     return textboxes, width, height, dpi
-
-
-@hookimpl
-def initialize(plugin_manager: pluggy.PluginManager):
-    # Disable built-in Tesseract OCR engine to avoid conflict
-    plugin_manager.set_blocked("ocrmypdf.builtin_plugins.tesseract_ocr")
 
 
 @hookimpl
@@ -82,10 +75,6 @@ def check_options(options):
                     15,
                     f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
                 )
-
-    # Need to populate this value, as OCRmyPDF core uses it to determine if OCR should be performed.
-    # cf. https://github.com/ocrmypdf/OCRmyPDF/blob/main/src/ocrmypdf/_pipelines/ocr.py#L122
-    options.tesseract_timeout = 1
 
     if options.pdf_renderer == "auto":
         options.pdf_renderer = "sandwich"
