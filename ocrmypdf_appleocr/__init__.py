@@ -63,17 +63,22 @@ def check_options(options):
             raise ExitCodeException(
                 15, "Language detection is not supported by LiveText mode in Apple OCR"
             )
-        supported_languages = AppleOCREngine.languages(options)
-        for lang in options.languages:
-            if "+" in lang:
-                raise ExitCodeException(
-                    15, "Language combination with '+' is not supported by Apple OCR."
-                )
-            if lang not in supported_languages:
-                raise ExitCodeException(
-                    15,
-                    f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
-                )
+        # 'und' is dispatched to the backend via setAutomaticallyDetectsLanguage_(True)
+        # in vision.py and is intentionally absent from supported_languages_{accurate,fast}
+        # (which mirror the locales reported by Vision). Skip per-language validation
+        # in that case so the README-documented `-l und` invocation works.
+        if not is_undetermined_language(options):
+            supported_languages = AppleOCREngine.languages(options)
+            for lang in options.languages:
+                if "+" in lang:
+                    raise ExitCodeException(
+                        15, "Language combination with '+' is not supported by Apple OCR."
+                    )
+                if lang not in supported_languages:
+                    raise ExitCodeException(
+                        15,
+                        f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
+                    )
 
     if options.pdf_renderer == "auto":
         options.pdf_renderer = "sandwich"
