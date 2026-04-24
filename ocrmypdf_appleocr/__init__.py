@@ -101,9 +101,9 @@ class AppleOCREngine(OcrEngine):
         if options.appleocr_recognition_mode == "livetext":
             return supported_languages_livetext
         elif options.appleocr_recognition_mode == "accurate":
-            return supported_languages_accurate
+            return supported_languages_accurate + ["und"]
         else:
-            return supported_languages_fast
+            return supported_languages_fast + ["und"]
 
     @staticmethod
     def get_orientation(input_file, options):
