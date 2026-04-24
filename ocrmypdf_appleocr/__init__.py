@@ -59,15 +59,12 @@ def add_options(parser):
 @hookimpl
 def check_options(options):
     if options.languages:
-        if options.appleocr_recognition_mode == "livetext" and is_undetermined_language(options):
-            raise ExitCodeException(
-                15, "Language detection is not supported by LiveText mode in Apple OCR"
-            )
-        # 'und' is dispatched to the backend via setAutomaticallyDetectsLanguage_(True)
-        # in vision.py and is intentionally absent from supported_languages_{accurate,fast}
-        # (which mirror the locales reported by Vision). Skip per-language validation
-        # in that case so the README-documented `-l und` invocation works.
-        if not is_undetermined_language(options):
+        if is_undetermined_language(options):
+            if options.appleocr_recognition_mode == "livetext":
+                raise ExitCodeException(
+                    15, "Language detection is not supported by LiveText mode in Apple OCR"
+                )
+        else:
             supported_languages = AppleOCREngine.languages(options)
             for lang in options.languages:
                 if "+" in lang:
