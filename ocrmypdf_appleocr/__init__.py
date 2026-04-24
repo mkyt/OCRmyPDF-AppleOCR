@@ -22,7 +22,7 @@ from ocrmypdf_appleocr.vision import (
     supported_languages_fast,
 )
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 
 def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[int, int]]:
@@ -59,21 +59,23 @@ def add_options(parser):
 @hookimpl
 def check_options(options):
     if options.languages:
-        if options.appleocr_recognition_mode == "livetext" and is_undetermined_language(options):
-            raise ExitCodeException(
-                15, "Language detection is not supported by LiveText mode in Apple OCR"
-            )
-        supported_languages = AppleOCREngine.languages(options)
-        for lang in options.languages:
-            if "+" in lang:
+        if is_undetermined_language(options):
+            if options.appleocr_recognition_mode == "livetext":
                 raise ExitCodeException(
-                    15, "Language combination with '+' is not supported by Apple OCR."
+                    15, "Language detection is not supported by LiveText mode in Apple OCR"
                 )
-            if lang not in supported_languages:
-                raise ExitCodeException(
-                    15,
-                    f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
-                )
+        else:
+            supported_languages = AppleOCREngine.languages(options)
+            for lang in options.languages:
+                if "+" in lang:
+                    raise ExitCodeException(
+                        15, "Language combination with '+' is not supported by Apple OCR."
+                    )
+                if lang not in supported_languages:
+                    raise ExitCodeException(
+                        15,
+                        f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
+                    )
 
     if options.pdf_renderer == "auto":
         options.pdf_renderer = "sandwich"
@@ -99,9 +101,9 @@ class AppleOCREngine(OcrEngine):
         if options.appleocr_recognition_mode == "livetext":
             return supported_languages_livetext
         elif options.appleocr_recognition_mode == "accurate":
-            return supported_languages_accurate
+            return supported_languages_accurate + ["und"]
         else:
-            return supported_languages_fast
+            return supported_languages_fast + ["und"]
 
     @staticmethod
     def get_orientation(input_file, options):
