@@ -10,6 +10,7 @@ dependencies = [
   "ocrmypdf>=14.2.1",
   "Pillow>=10.0.1",
   "pikepdf>=8.10.1",
+  "packaging",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

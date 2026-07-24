@@ -6,6 +6,7 @@ import ocrmypdf
 from ocrmypdf import OcrEngine, hookimpl
 from ocrmypdf._exec import tesseract
 from ocrmypdf.exceptions import ExitCodeException
+from packaging.version import Version
 from PIL import Image
 
 from ocrmypdf_appleocr.common import Textbox, is_undetermined_language, lang_code_to_locale, log
@@ -149,7 +150,7 @@ class AppleOCREngine(OcrEngine):
             f.write(plaintext)
 
 
-if ocrmypdf.__version__ >= "17.0.0":
+if Version(ocrmypdf.__version__) >= Version("17.0.0"):
 
     @hookimpl
     def get_ocr_engine(options):
