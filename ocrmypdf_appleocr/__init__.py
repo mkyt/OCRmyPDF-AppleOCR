@@ -30,7 +30,7 @@ from ocrmypdf_appleocr.vision import (
     supported_languages_fast,
 )
 
-__version__ = "0.3.4"
+__version__ = "0.4.0"
 
 # Name this engine registers under for OCRmyPDF's --ocr-engine option.
 OCR_ENGINE_NAME = "appleocr"
