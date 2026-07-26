@@ -56,6 +56,7 @@ class Textbox(NamedTuple):
     bb: BoundingBox
     confidence: int  # 0-100
     is_vertical: bool
+    children: list[BoundingBox] | None
 
 
 lang_code_to_locale = {
@@ -90,6 +91,9 @@ lang_code_to_locale = {
     "ron": "ro-RO",
     "swe": "sv-SE",
 }
+
+unsegmented_languages = set(["chi_sim", "chi_tra", "yue_sim", "yue_tra", "jpn", "tha"])
+
 
 locale_to_lang_code = {v: k for k, v in lang_code_to_locale.items()}
 

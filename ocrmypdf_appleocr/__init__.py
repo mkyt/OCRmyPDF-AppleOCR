@@ -9,7 +9,13 @@ from ocrmypdf.exceptions import ExitCodeException
 from packaging.version import Version
 from PIL import Image
 
-from ocrmypdf_appleocr.common import Textbox, is_undetermined_language, lang_code_to_locale, log
+from ocrmypdf_appleocr.common import (
+    Textbox,
+    is_undetermined_language,
+    lang_code_to_locale,
+    log,
+    unsegmented_languages,
+)
 from ocrmypdf_appleocr.hocr import build_hocr_document
 from ocrmypdf_appleocr.livetext import (
     livetext_supported,
@@ -34,7 +40,10 @@ def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[in
 
     if options.appleocr_recognition_mode == "livetext":
         locales = [lang_code_to_locale.get(lang, lang) for lang in options.languages]
-        textboxes = ocr_VKCImageAnalyzerRequest(image, width, height, locales)
+        unit = (
+            "line" if any(lang in unsegmented_languages for lang in options.languages) else "word"
+        )
+        textboxes = ocr_VKCImageAnalyzerRequest(image, width, height, locales, unit)
     else:
         textboxes = ocr_VNRecognizeTextRequest(image, width, height, options)
 

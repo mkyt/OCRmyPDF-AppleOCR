@@ -88,6 +88,7 @@ def ocr_VNRecognizeTextRequest(image_file: Path, width: int, height: int, option
                     b,
                     int(confidence * 100),
                     False,  # VNRecognizeTextRequest does not provide orientation info
+                    None,
                 )
             )
     return res
