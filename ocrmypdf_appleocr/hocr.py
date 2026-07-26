@@ -2,7 +2,14 @@ from ocrmypdf_appleocr.common import Textbox
 
 
 def build_hocr_line(textbox: Textbox, page_number: int, line_number: int, lang: str) -> str:
-    text, bb, confidence, is_vert = textbox
+    # Read the fields by name: unpacking the whole tuple breaks as soon as Textbox
+    # grows a field, as it did when word-level children were added.
+    text, bb, confidence, is_vert = (
+        textbox.text,
+        textbox.bb,
+        textbox.confidence,
+        textbox.is_vertical,
+    )
     if not is_vert:
         bbox = f"{bb.to_hocr_bbox()}; {bb.estimated_baseline()}"
     else:

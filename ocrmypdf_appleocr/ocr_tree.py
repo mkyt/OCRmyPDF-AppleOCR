@@ -13,14 +13,10 @@ def _line_textangle(textbox: Textbox) -> float:
     """Text rotation in degrees, counter-clockwise, per hOCR/OcrElement convention.
 
     Mirrors the rotation used in ocrmypdf_appleocr.pdf.generate_text_content_stream to
-    build the PDF text matrix: horizontal text advances along the box's own rotation,
-    while vertical (top-to-bottom) text advances an additional 90 degrees clockwise
-    relative to that.
+    build the PDF text matrix: the angle of the edges the text runs along, which for
+    vertical (top-to-bottom) text points 90 degrees clockwise of the horizontal case.
     """
-    angle = -math.degrees(textbox.bb.angle())
-    if textbox.is_vertical:
-        angle -= 90.0
-    return angle
+    return -math.degrees(textbox.bb.writing_angle(textbox.is_vertical))
 
 
 def _aabb(bb, BoundingBox):

@@ -27,6 +27,12 @@ CHAR_ASPECT = 2
 FONT_NAME = Name("/f-0-0")
 # Minimum width of the space rendered between two words, as a fraction of the font size
 MIN_SPACE_RATIO = 0.1
+# Fraction of the line box height (width, for vertical text) actually covered by the
+# rendered glyphs. The reported line boxes are padded, so the boxes of neighbouring
+# lines can overlap - most noticeably for rotated text - which makes selecting a single
+# line in a viewer pick up parts of the adjacent one. Shrinking the glyph height a
+# little, and centring it in the line box, keeps the selectable areas apart.
+TEXT_HEIGHT_RATIO = 0.8
 
 
 def register_glyphlessfont(pdf: Pdf):
@@ -218,8 +224,12 @@ class ContentStreamBuilder:
         return ContentStreamBuilder(self._instructions + other._instructions)
 
 
-def _horizontal_tm(font_size: float, cos_a: float, sin_a: float, x: float, y: float):
-    """Text matrix for horizontal text of the given size, rotation and origin."""
+def _text_tm(font_size: float, cos_a: float, sin_a: float, x: float, y: float):
+    """Text matrix for a run of the given size, advance direction and origin.
+
+    The text advances along `(cos_a, sin_a)` and the glyphs rise perpendicular to
+    it, so vertical text is just a run whose advance direction points down the page.
+    """
     return (
         font_size * cos_a,
         font_size * sin_a,
@@ -242,22 +252,22 @@ def _word_runs(
     font_size: float,
     cos_a: float,
     sin_a: float,
-    llx: float,
-    lly: float,
+    ox: float,
+    oy: float,
 ):
     """Lay out the words of a segmented (space-delimited) line on the line's baseline.
 
     Each word keeps its own position along the line and its own width, but the angle,
-    the font size and the baseline are taken from the line, so the rendered text does
-    not wobble from word to word. The word origin is obtained by projecting the word's
-    lower-left corner onto the line baseline, which drops the perpendicular jitter of
-    the individual word boxes.
+    the font size and the baseline (the line's own origin `(ox, oy)`) are taken from
+    the line, so the rendered text does not wobble from word to word. The word origin
+    is obtained by projecting the word's lower-left corner onto the line baseline,
+    which drops the perpendicular jitter of the individual word boxes.
     """
 
     def run(t: float, width: float, text: str):
         """Build a run starting at distance `t` along the baseline."""
         return (
-            _horizontal_tm(font_size, cos_a, sin_a, llx + t * cos_a, lly + t * sin_a),
+            _text_tm(font_size, cos_a, sin_a, ox + t * cos_a, oy + t * sin_a),
             _stretch(width, len(text), font_size),
             text,
         )
@@ -271,7 +281,7 @@ def _word_runs(
             continue
         wx = wbb.ll.x * scale[0]
         wy = (height - wbb.ll.y) * scale[1]
-        words.append(((wx - llx) * cos_a + (wy - lly) * sin_a, wwidth, wtext))
+        words.append(((wx - ox) * cos_a + (wy - oy) * sin_a, wwidth, wtext))
 
     runs = []
     min_space = font_size * MIN_SPACE_RATIO
@@ -329,18 +339,26 @@ def generate_text_content_stream(
         bbox = result.bb
         box_width = bbox.true_width() * scale[0]
         box_height = bbox.true_height() * scale[1]
-        angle = -bbox.angle()  # PDF coordinate is y-up, so negate the angle
-        ulx = bbox.ul.x * scale[0]
-        uly = (height - bbox.ul.y) * scale[1]
-        llx = bbox.ll.x * scale[0]
-        lly = (height - bbox.ll.y) * scale[1]
-        cos_a = math.cos(angle)
-        sin_a = math.sin(angle)
 
         if len(text) == 0 or box_width <= 0 or box_height <= 0:
             continue
 
         vertical = result.is_vertical
+        # Direction the text advances in: to the right along the baseline for
+        # horizontal text, down the column for vertical text.
+        angle = -bbox.writing_angle(vertical)  # PDF coordinate is y-up, so negate
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        # Vertical text starts at the top of its column, horizontal text at the left
+        # end of its baseline. The glyphs rise perpendicular to the advance direction
+        # from there, so move the origin half of what they lost to the shrinking,
+        # which centres them in the line box.
+        line_thickness = box_width if vertical else box_height
+        font_size = line_thickness * TEXT_HEIGHT_RATIO
+        inset = (line_thickness - font_size) / 2.0
+        anchor = bbox.ul if vertical else bbox.ll
+        ox = anchor.x * scale[0] - inset * sin_a
+        oy = (height - anchor.y) * scale[1] + inset * cos_a
 
         log.debug(
             f"Textline '{text}' bbox (in px): {bbox} vertical: {vertical}, angle: {angle}, box_width: {box_width}, box_height: {box_height}"
@@ -348,27 +366,23 @@ def generate_text_content_stream(
 
         word_boxes = []
         if vertical:
-            font_size = box_width
-            tm_args = (
-                font_size * sin_a,
-                -font_size * cos_a,
-                font_size * cos_a,
-                -font_size * sin_a,
-                ulx,
-                uly,
-            )
-            runs = [(tm_args, _stretch(box_height, len(text), font_size), text)]
+            runs = [
+                (
+                    _text_tm(font_size, cos_a, sin_a, ox, oy),
+                    _stretch(box_height, len(text), font_size),
+                    text,
+                )
+            ]
         else:
-            font_size = box_height
             runs = []
             if result.children:
                 # Word-level rendering for languages written with word separators.
-                runs = _word_runs(result.children, scale, height, font_size, cos_a, sin_a, llx, lly)
+                runs = _word_runs(result.children, scale, height, font_size, cos_a, sin_a, ox, oy)
                 word_boxes = [word.bb for word in result.children]
             if not runs:
                 runs = [
                     (
-                        _horizontal_tm(font_size, cos_a, sin_a, llx, lly),
+                        _text_tm(font_size, cos_a, sin_a, ox, oy),
                         _stretch(box_width, len(text), font_size),
                         text,
                     )

@@ -16,6 +16,16 @@ def distance(p1: Point, p2: Point) -> float:
     return math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
 
 
+def _edge_angle(p1: Point, p2: Point) -> float:
+    """Direction of the edge from `p1` to `p2`, in radians."""
+    return math.atan2(p2.y - p1.y, p2.x - p1.x)
+
+
+def _mean_angle(a1: float, a2: float) -> float:
+    """Mean of two angles, averaged the short way around the circle."""
+    return a1 + math.remainder(a2 - a1, 2 * math.pi) / 2.0
+
+
 class BoundingBox(NamedTuple):
     """Represents a bounding box in the document."""
 
@@ -42,11 +52,19 @@ class BoundingBox(NamedTuple):
         """Returns the true height of the bounding box."""
         return (distance(self.ul, self.ll) + distance(self.ur, self.lr)) / 2.0
 
-    def angle(self) -> float:
-        """Returns the angle of the bounding box in radians."""
-        delta_x = self.ur.x - self.ul.x
-        delta_y = self.ur.y - self.ul.y
-        return math.atan2(delta_y, delta_x)
+    def writing_angle(self, vertical: bool) -> float:
+        """Returns the angle the text advances along, in radians.
+
+        Only the two edges that run *along* the text are used: the top and bottom
+        edges for horizontal text, the left and right ones for vertical text. The
+        perpendicular edges are just one line tall, so rounding the reported corners
+        to whole pixels tilts them by up to a degree; orienting a line by that error
+        walks its far end right out of the line box, which is what makes selecting
+        such a line in a viewer grab the neighbouring one.
+        """
+        if vertical:
+            return _mean_angle(_edge_angle(self.ul, self.ll), _edge_angle(self.ur, self.lr))
+        return _mean_angle(_edge_angle(self.ul, self.ur), _edge_angle(self.ll, self.lr))
 
 
 class Textbox(NamedTuple):
