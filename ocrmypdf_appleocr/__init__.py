@@ -32,6 +32,23 @@ from ocrmypdf_appleocr.vision import (
 
 __version__ = "0.3.4"
 
+# Name this engine registers under for OCRmyPDF's --ocr-engine option.
+OCR_ENGINE_NAME = "appleocr"
+
+
+def _register_ocr_engine_choice(parser):
+    """Add ``appleocr`` to the core ``--ocr-engine`` choices, if present.
+
+    OCRmyPDF defines ``--ocr-engine`` with a fixed set of choices; argparse has no
+    public API to extend them, so we reach into the existing action. This lets
+    users explicitly select ``--ocr-engine appleocr``.
+    """
+    for action in parser._actions:
+        if action.dest == "ocr_engine" and action.choices is not None:
+            if OCR_ENGINE_NAME not in action.choices:
+                action.choices = [*action.choices, OCR_ENGINE_NAME]
+            return
+
 
 def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[int, int]]:
     im = Image.open(image)
@@ -52,6 +69,7 @@ def perform_ocr(image: Path, options) -> tuple[list[Textbox], int, int, tuple[in
 
 @hookimpl
 def add_options(parser):
+    _register_ocr_engine_choice(parser)
     appleocr_options = parser.add_argument_group("Apple OCR", "Apple Vision OCR options")
     appleocr_options.add_argument(
         "--appleocr-disable-correction",
@@ -181,7 +199,7 @@ if Version(ocrmypdf.__version__) >= Version("17.0.0"):
         if options is not None:
             ocr_engine = getattr(options, "ocr_engine", "auto")
             log.debug(f"Specified OCR engine: {ocr_engine}")
-            if ocr_engine not in ("auto", "appleocr"):
+            if ocr_engine not in ("auto", OCR_ENGINE_NAME):
                 return None
         log.debug("  Using AppleOCR engine")
         return AppleOCREngine()
