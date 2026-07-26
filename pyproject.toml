@@ -41,6 +41,8 @@ classifiers = [
 
 [project.entry-points]
 
+[project.entry-points.ocrmypdf]
+appleocr = "ocrmypdf_appleocr"
 
 [project.urls]
 Homepage = "https://github.com/mkyt/OCRmyPDF-AppleOCR"
