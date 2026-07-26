@@ -16,6 +16,7 @@ from ocrmypdf_appleocr.livetext import (
     ocr_VKCImageAnalyzerRequest,
     supported_languages_livetext,
 )
+from ocrmypdf_appleocr.ocr_tree import build_ocr_tree
 from ocrmypdf_appleocr.pdf import generate_pdf
 from ocrmypdf_appleocr.vision import (
     ocr_VNRecognizeTextRequest,
@@ -148,6 +149,20 @@ class AppleOCREngine(OcrEngine):
 
         with open(output_text, "w", encoding="utf-8") as f:
             f.write(plaintext)
+
+    @staticmethod
+    def supports_generate_ocr() -> bool:
+        return True
+
+    @staticmethod
+    def generate_ocr(input_file, options, page_number=0):
+        logging.debug("Starting OCR with Apple Vision Framework (generate_ocr API)...")
+
+        res, w, h, dpi = perform_ocr(Path(input_file), options)
+        plaintext = "\n".join(tb.text for tb in res)
+
+        page = build_ocr_tree(res, w, h, dpi, page_number)
+        return page, plaintext
 
 
 if Version(ocrmypdf.__version__) >= Version("17.0.0"):
