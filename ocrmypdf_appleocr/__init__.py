@@ -81,7 +81,10 @@ def add_options(parser):
         "--appleocr-recognition-mode",
         choices=["fast", "accurate", "livetext"],
         default="livetext" if livetext_supported else "accurate",
-        help="Recognition mode for Apple Vision OCR (default: accurate for macOS 12 and earlier, livetext for macOS 13 and later)",
+        help=(
+            "Recognition mode for Apple Vision OCR (default: accurate for macOS 12 "
+            "and earlier, livetext for macOS 13 and later)"
+        ),
     )
 
 
@@ -103,12 +106,17 @@ def check_options(options):
                 if lang not in supported_languages:
                     raise ExitCodeException(
                         15,
-                        f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
+                        f"Language '{lang}' is not supported by Apple OCR (supported in "
+                        f"{options.appleocr_recognition_mode} mode: "
+                        f"{', '.join(supported_languages)}). Use 'und' for undetermined "
+                        "language.",
                     )
                 if lang == "und":
                     raise ExitCodeException(
                         15,
-                        "Undetermined language 'und' can only be used as the sole language. Use a specific language code instead of \"und\" when specifying multiple languages.",
+                        "Undetermined language 'und' can only be used as the sole language. "
+                        'Use a specific language code instead of "und" when specifying '
+                        "multiple languages.",
                     )
 
     if options.pdf_renderer == "auto":

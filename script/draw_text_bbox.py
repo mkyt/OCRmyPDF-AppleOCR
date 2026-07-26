@@ -77,7 +77,7 @@ def quad_area(quad: Quad) -> float:
     """Shoelace formula."""
     area = sum(
         x1 * y2 - x2 * y1
-        for (x1, y1), (x2, y2) in zip(quad, quad[1:] + quad[:1])
+        for (x1, y1), (x2, y2) in zip(quad, quad[1:] + quad[:1], strict=True)
     )
     return abs(area) / 2.0
 

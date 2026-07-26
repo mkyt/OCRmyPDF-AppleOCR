@@ -207,7 +207,7 @@ class ContentStreamBuilder:
         inst = [ContentStreamInstruction([x, y], Operator("m"))]
         return ContentStreamBuilder(self._instructions + inst)
 
-    def l(self, x: float, y: float):
+    def l(self, x: float, y: float):  # noqa: E743 (mirrors the PDF "l" operator)
         """Draw line to point (x, y)."""
         inst = [ContentStreamInstruction([x, y], Operator("l"))]
         return ContentStreamBuilder(self._instructions + inst)
@@ -361,7 +361,8 @@ def generate_text_content_stream(
         oy = (height - anchor.y) * scale[1] + inset * cos_a
 
         log.debug(
-            f"Textline '{text}' bbox (in px): {bbox} vertical: {vertical}, angle: {angle}, box_width: {box_width}, box_height: {box_height}"
+            f"Textline '{text}' bbox (in px): {bbox} vertical: {vertical}, angle: {angle}, "
+            f"box_width: {box_width}, box_height: {box_height}"
         )
 
         word_boxes = []

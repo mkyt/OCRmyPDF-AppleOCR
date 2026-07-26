@@ -36,6 +36,7 @@ import Quartz
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from draw_text_bbox import stroke_instructions  # noqa: E402
+
 from ocrmypdf_appleocr.common import (  # noqa: E402
     Textbox,
     lang_code_to_locale,

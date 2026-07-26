@@ -21,10 +21,13 @@ def build_hocr_line(textbox: Textbox, page_number: int, line_number: int, lang: 
         .replace('"', "&quot;")
         .replace("'", "&apos;")
     )
+    word_id = f"word_{page_number}_{line_number}"
+    word_title = f"{bbox}; x_wconf {confidence}"
+    word_span = f'<span class="ocrx_word" id="{word_id}" title="{word_title}">{text}</span>'
     return f"""<div class="ocr_carea" id="block_{page_number}_{line_number}" title="{bbox}">
 <p class="ocr_par" id="par_{page_number}_{line_number}" lang="{lang}" title="{bbox}">
   <span class="ocr_line" id="line_{page_number}_{line_number}" title="{bbox}">
-    <span class="ocrx_word" id="word_{page_number}_{line_number}" title="{bbox}; x_wconf {confidence}">{text}</span>
+    {word_span}
   </span>
 </p>
 </div>

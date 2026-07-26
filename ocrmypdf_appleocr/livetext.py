@@ -8,10 +8,8 @@ from typing import Literal
 
 import Cocoa
 import objc
-import Vision
+import Vision  # noqa: F401  (imported for its side effect of registering ObjC classes)
 from PyObjCTools import AppHelper
-
-Vision  # to silence unused import warning
 
 from ocrmypdf_appleocr.common import BoundingBox, Point, Textbox, locale_to_lang_code, log
 
@@ -159,18 +157,18 @@ def _ocr_VKCImageAnalyzerRequest_child_main(
         lines: list[Textbox] = []
         response_lines = analysis.allLines()
         if response_lines:
-            for l in response_lines:
-                lq = l.quad()
+            for line in response_lines:
+                lq = line.quad()
                 ul_idx = _quad2ulIdx(lq, width, height)
                 # https://github.com/WebKit/WebKit/blob/main/Source/WebKit/Platform/cocoa/ImageAnalysisUtilities.mm
-                is_vert = l.layoutDirection() == 5
+                is_vert = line.layoutDirection() == 5
 
                 bb = _quad2bb(lq, ul_idx, width, height)
 
                 if level == "word" and not is_vert:
                     corner_map = _corner_map(lq, bb, width, height)
                     children = []
-                    for w in l.children():
+                    for w in line.children():
                         wbb = _quad2bb_mapped(w.quad(), corner_map, width, height)
                         children.append(Textbox(w.string(), wbb, 100, is_vert, None))
                 else:
@@ -178,7 +176,7 @@ def _ocr_VKCImageAnalyzerRequest_child_main(
 
                 lines.append(
                     Textbox(
-                        l.string(),
+                        line.string(),
                         bb,
                         100,  # VKCImageAnalyzer does not provide confidence score,
                         is_vert,

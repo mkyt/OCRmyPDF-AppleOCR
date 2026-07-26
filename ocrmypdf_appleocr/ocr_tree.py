@@ -24,7 +24,8 @@ def _aabb(bb, BoundingBox):
 
     As per [hOCR spec](https://kba.github.io/hocr-spec/1.2/#bbox),
     bbox should be specified by upper-left corner (x0, y0) and lower-right corner (x1, y1),
-    but upstream (ocrmypdf core) assumes left < right and top < bottom, which do not hold for heavily rotated texts.
+    but upstream (ocrmypdf core) assumes left < right and top < bottom, which do not
+    hold for heavily rotated texts.
     For now, simply take the maximum/minimum of x and y coordinates as `bbox` to avoid errors.
     """
     xs = (bb.ul.x, bb.ur.x, bb.ll.x, bb.lr.x)
