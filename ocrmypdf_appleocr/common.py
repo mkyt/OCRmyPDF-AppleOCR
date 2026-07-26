@@ -56,7 +56,7 @@ class Textbox(NamedTuple):
     bb: BoundingBox
     confidence: int  # 0-100
     is_vertical: bool
-    children: list[BoundingBox] | None
+    children: "list[Textbox] | None"
 
 
 lang_code_to_locale = {

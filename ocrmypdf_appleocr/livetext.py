@@ -81,12 +81,17 @@ def _quad2ulIdx(quad, width, height):
     return ul_index
 
 
+def _quad2pts(q, width, height) -> list[tuple[float, float]]:
+    return [
+        (q.topLeft().x * width, q.topLeft().y * height),
+        (q.topRight().x * width, q.topRight().y * height),
+        (q.bottomRight().x * width, q.bottomRight().y * height),
+        (q.bottomLeft().x * width, q.bottomLeft().y * height),
+    ]
+
+
 def _quad2bb(q, ul_index, width, height) -> BoundingBox:
-    pts = []
-    pts.append((q.topLeft().x * width, q.topLeft().y * height))
-    pts.append((q.topRight().x * width, q.topRight().y * height))
-    pts.append((q.bottomRight().x * width, q.bottomRight().y * height))
-    pts.append((q.bottomLeft().x * width, q.bottomLeft().y * height))
+    pts = _quad2pts(q, width, height)
     cx = sum(p[0] for p in pts) / 4.0
     cy = sum(p[1] for p in pts) / 4.0
     # sort points in CW order in x-right, y-down coordinate system
@@ -96,6 +101,45 @@ def _quad2bb(q, ul_index, width, height) -> BoundingBox:
     lr = Point(int(pts[(ul_index + 2) % 4][0]), int(pts[(ul_index + 2) % 4][1]))
     ll = Point(int(pts[(ul_index + 3) % 4][0]), int(pts[(ul_index + 3) % 4][1]))
     return BoundingBox(ul, ur, ll, lr)
+
+
+def _nearest_pt_index(pts: list[tuple[float, float]], target: Point) -> int:
+    return min(
+        range(len(pts)),
+        key=lambda i: (pts[i][0] - target.x) ** 2 + (pts[i][1] - target.y) ** 2,
+    )
+
+
+def _corner_map(q, bb: BoundingBox, width, height) -> tuple[int, int]:
+    """Where the corners of `bb` sit in the point order VisionKit reports for `q`.
+
+    Returns `(index of the upper-left corner, +1 or -1 for the winding)`, so that
+    walking the quad points from that index in that direction yields ul, ur, lr, ll.
+
+    Which corner of a quad is the upper-left one cannot be recovered from the quad
+    alone: `_quad2ulIdx` picks the corner pointing closest to the upper left, which
+    for a rotated quad depends on its aspect ratio, so the index it finds in the
+    angle-sorted points of a line does not carry over to the narrow quads of its
+    words. VisionKit does label the corners of a line and of its words by the same
+    convention though, so the mapping resolved once for the line can be replayed on
+    every word of that line.
+    """
+    pts = _quad2pts(q, width, height)
+    i_ul = _nearest_pt_index(pts, bb.ul)
+    step = 1 if _nearest_pt_index(pts, bb.ur) == (i_ul + 1) % 4 else -1
+    return i_ul, step
+
+
+def _quad2bb_mapped(q, corner_map: tuple[int, int], width, height) -> BoundingBox:
+    """Convert a quad to a BoundingBox with the corner mapping of its line."""
+    i_ul, step = corner_map
+    pts = _quad2pts(q, width, height)
+
+    def corner(n: int) -> Point:
+        p = pts[(i_ul + n * step) % 4]
+        return Point(int(p[0]), int(p[1]))
+
+    return BoundingBox(ul=corner(0), ur=corner(1), ll=corner(3), lr=corner(2))
 
 
 def _ocr_VKCImageAnalyzerRequest_child_main(
@@ -119,16 +163,17 @@ def _ocr_VKCImageAnalyzerRequest_child_main(
                 # https://github.com/WebKit/WebKit/blob/main/Source/WebKit/Platform/cocoa/ImageAnalysisUtilities.mm
                 is_vert = l.layoutDirection() == 5
 
+                bb = _quad2bb(lq, ul_idx, width, height)
+
                 if level == "word" and not is_vert:
+                    corner_map = _corner_map(lq, bb, width, height)
                     children = []
                     for w in l.children():
-                        wq = w.quad()
-                        bb = _quad2bb(wq, ul_idx, width, height)
-                        children.append(Textbox(w.string(), bb, 100, is_vert, None))
+                        wbb = _quad2bb_mapped(w.quad(), corner_map, width, height)
+                        children.append(Textbox(w.string(), wbb, 100, is_vert, None))
                 else:
                     children = None
 
-                bb = _quad2bb(lq, ul_idx, width, height)
                 lines.append(
                     Textbox(
                         l.string(),
