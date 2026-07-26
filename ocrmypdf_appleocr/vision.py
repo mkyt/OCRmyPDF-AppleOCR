@@ -67,18 +67,15 @@ def ocr_VNRecognizeTextRequest(image_file: Path, width: int, height: int, option
         for o in recognize_request.results():
             recognized_text: Vision.VNRecognizedText = o.topCandidates_(1)[0]
             bb = o.boundingBox()  # bb in bottom-left origin, normalized coordinates
+            left = bb.origin.x * width
+            right = (bb.origin.x + bb.size.width) * width
+            top = (1 - bb.origin.y - bb.size.height) * height
+            bottom = (1 - bb.origin.y) * height
             b = BoundingBox(  # b in upper-left origin, pixel coordinates
-                Point(
-                    int(bb.origin.x * width), int((1 - bb.origin.y - bb.size.height) * height)
-                ),  # ul
-                Point(
-                    int((bb.origin.x + bb.size.width) * width),
-                    int((1 - bb.origin.y - bb.size.height) * height),
-                ),  # ur
-                Point(int(bb.origin.x * width), int((1 - bb.origin.y) * height)),  # ll
-                Point(
-                    int((bb.origin.x + bb.size.width) * width), int((1 - bb.origin.y) * height)
-                ),  # lr
+                Point(left, top),  # ul
+                Point(right, top),  # ur
+                Point(left, bottom),  # ll
+                Point(right, bottom),  # lr
             )
             confidence = recognized_text.confidence()
             text = recognized_text.string()

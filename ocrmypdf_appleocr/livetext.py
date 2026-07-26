@@ -1,6 +1,8 @@
 import math
 import multiprocessing as mp
 import platform
+import queue
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +16,7 @@ Vision  # to silence unused import warning
 from ocrmypdf_appleocr.common import BoundingBox, Point, Textbox, locale_to_lang_code, log
 
 livetext_supported = int(platform.mac_ver()[0].split(".")[0]) >= 13  # macOS Ventura or later
+OCR_TIMEOUT = 30  # seconds to wait for the recognition subprocess
 supported_languages_livetext: list[str] = []
 if livetext_supported:
     app_info = Cocoa.NSBundle.mainBundle().infoDictionary()
@@ -96,10 +99,10 @@ def _quad2bb(q, ul_index, width, height) -> BoundingBox:
     cy = sum(p[1] for p in pts) / 4.0
     # sort points in CW order in x-right, y-down coordinate system
     pts.sort(key=lambda p: math.atan2(p[1] - cy, p[0] - cx))
-    ul = Point(int(pts[ul_index][0]), int(pts[ul_index][1]))
-    ur = Point(int(pts[(ul_index + 1) % 4][0]), int(pts[(ul_index + 1) % 4][1]))
-    lr = Point(int(pts[(ul_index + 2) % 4][0]), int(pts[(ul_index + 2) % 4][1]))
-    ll = Point(int(pts[(ul_index + 3) % 4][0]), int(pts[(ul_index + 3) % 4][1]))
+    ul = Point(*pts[ul_index])
+    ur = Point(*pts[(ul_index + 1) % 4])
+    lr = Point(*pts[(ul_index + 2) % 4])
+    ll = Point(*pts[(ul_index + 3) % 4])
     return BoundingBox(ul, ur, ll, lr)
 
 
@@ -136,8 +139,7 @@ def _quad2bb_mapped(q, corner_map: tuple[int, int], width, height) -> BoundingBo
     pts = _quad2pts(q, width, height)
 
     def corner(n: int) -> Point:
-        p = pts[(i_ul + n * step) % 4]
-        return Point(int(p[0]), int(p[1]))
+        return Point(*pts[(i_ul + n * step) % 4])
 
     return BoundingBox(ul=corner(0), ur=corner(1), ll=corner(3), lr=corner(2))
 
@@ -210,8 +212,6 @@ def _ocr_VKCImageAnalyzerRequest_child_main(
 def ocr_VKCImageAnalyzerRequest(
     image_file: Path, width: int, height: int, locales: list[str], level: Literal["line", "word"]
 ) -> list[Textbox]:
-    result = None
-
     mp.set_start_method("spawn", force=True)
     q = mp.Queue()
     p = mp.Process(
@@ -219,15 +219,32 @@ def ocr_VKCImageAnalyzerRequest(
         args=(q, image_file, width, height, locales, level),
     )
     p.start()
-    p.join(30)  # Timeout after 30 seconds
+    # Read the result before waiting for the child to exit. A result larger than the
+    # pipe buffer only leaves the child once it is drained from this end, so joining
+    # first would deadlock on any page with enough text in it. Poll rather than block
+    # for the whole timeout, so a child that dies without delivering anything is
+    # noticed right away. `alive` is sampled before the read, so a child that exits
+    # between the two still gets its result picked up.
+    result = None
+    deadline = time.monotonic() + OCR_TIMEOUT
+    while result is None and time.monotonic() < deadline:
+        alive = p.is_alive()
+        try:
+            result = q.get(timeout=0.1)
+        except queue.Empty:
+            if not alive:
+                break
+    # Still running means it never delivered a result; anything else failed outright.
+    timed_out = p.is_alive()
+    p.join(5)
     if p.is_alive():
         p.terminate()
         p.join()
-        raise RuntimeError("Timeout in VKCImageAnalyzerRequest")
-    if not q.empty():
-        result = q.get()
     if result is None:
-        result = []
-        raise RuntimeError("Error in performing VKCImageAnalyzerRequest")
+        raise RuntimeError(
+            "Timeout in VKCImageAnalyzerRequest"
+            if timed_out
+            else "Error in performing VKCImageAnalyzerRequest"
+        )
 
     return result

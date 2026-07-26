@@ -6,10 +6,16 @@ log = logging.getLogger(__name__)
 
 
 class Point(NamedTuple):
-    """Represents a point in 2D space. (upper-left origin, pixel coordinates)"""
+    """Represents a point in 2D space. (upper-left origin, pixel coordinates)
 
-    x: int
-    y: int
+    Kept as floats: the OCR engines report corners in normalized coordinates, and
+    quantising them to whole pixels on the way in throws away precision that the
+    renderers cannot get back. Rounding belongs at the output boundary, i.e. in
+    `BoundingBox.to_hocr_bbox`.
+    """
+
+    x: float
+    y: float
 
 
 def distance(p1: Point, p2: Point) -> float:
@@ -35,7 +41,8 @@ class BoundingBox(NamedTuple):
     lr: Point
 
     def to_hocr_bbox(self) -> str:
-        return f"bbox {self.ul.x} {self.ul.y} {self.lr.x} {self.lr.y}"
+        # hOCR bboxes are whole pixels, so this is where the coordinates get rounded.
+        return f"bbox {round(self.ul.x)} {round(self.ul.y)} {round(self.lr.x)} {round(self.lr.y)}"
 
     def estimated_baseline(self) -> str:
         intercept = max(self.ll.y, self.lr.y) - self.lr.y
