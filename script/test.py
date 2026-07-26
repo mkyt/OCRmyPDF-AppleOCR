@@ -13,6 +13,8 @@ tests = list((basedir / "examples").glob("*.pdf"))
 if __name__ == "__main__":
     env = os.environ.copy()
     os.makedirs("./test_outputs", exist_ok=True)
+    for f in Path("./test_outputs").glob("*.pdf"):
+        f.unlink()
     for test in tests:
         test_name = test.stem
         lang = test_name.split("_")[0]
