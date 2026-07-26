@@ -25,6 +25,8 @@ TEXT_POSITION_DEBUG = False
 GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_appleocr", "pdf.ttf")
 CHAR_ASPECT = 2
 FONT_NAME = Name("/f-0-0")
+# Minimum width of the space rendered between two words, as a fraction of the font size
+MIN_SPACE_RATIO = 0.1
 
 
 def register_glyphlessfont(pdf: Pdf):
@@ -216,6 +218,92 @@ class ContentStreamBuilder:
         return ContentStreamBuilder(self._instructions + other._instructions)
 
 
+def _horizontal_tm(font_size: float, cos_a: float, sin_a: float, x: float, y: float):
+    """Text matrix for horizontal text of the given size, rotation and origin."""
+    return (
+        font_size * cos_a,
+        font_size * sin_a,
+        -font_size * sin_a,
+        font_size * cos_a,
+        x,
+        y,
+    )
+
+
+def _stretch(width: float, nchars: int, font_size: float) -> float:
+    """Horizontal scaling (Tz) that makes `nchars` glyphs span `width`."""
+    return 100.0 * width / nchars / font_size * CHAR_ASPECT
+
+
+def _word_runs(
+    children: Iterable[Textbox],
+    scale: tuple[float, float],
+    height: int,
+    font_size: float,
+    cos_a: float,
+    sin_a: float,
+    llx: float,
+    lly: float,
+):
+    """Lay out the words of a segmented (space-delimited) line on the line's baseline.
+
+    Each word keeps its own position along the line and its own width, but the angle,
+    the font size and the baseline are taken from the line, so the rendered text does
+    not wobble from word to word. The word origin is obtained by projecting the word's
+    lower-left corner onto the line baseline, which drops the perpendicular jitter of
+    the individual word boxes.
+    """
+
+    def run(t: float, width: float, text: str):
+        """Build a run starting at distance `t` along the baseline."""
+        return (
+            _horizontal_tm(font_size, cos_a, sin_a, llx + t * cos_a, lly + t * sin_a),
+            _stretch(width, len(text), font_size),
+            text,
+        )
+
+    words = []
+    for word in children:
+        wtext = word.text.strip()
+        wbb = word.bb
+        wwidth = wbb.true_width() * scale[0]
+        if len(wtext) == 0 or wwidth <= 0:
+            continue
+        wx = wbb.ll.x * scale[0]
+        wy = (height - wbb.ll.y) * scale[1]
+        words.append(((wx - llx) * cos_a + (wy - lly) * sin_a, wwidth, wtext))
+
+    runs = []
+    min_space = font_size * MIN_SPACE_RATIO
+    for i, (t, wwidth, wtext) in enumerate(words):
+        if i + 1 < len(words):
+            # Fill the gap up to the next word with an explicit space, so that text
+            # extractors do not have to infer the word separation from the glyph
+            # positions alone. The reported word boxes are padded and may even touch,
+            # so trim the word to keep room for a space that actually advances the
+            # text position; text laid out strictly left to right also keeps
+            # extractors from mistaking a word for the start of a new line.
+            span = words[i + 1][0] - t
+            if span > 0:
+                wwidth = min(wwidth, max(span - min_space, span / 2.0))
+            runs.append(run(t, wwidth, wtext))
+            runs.append(run(t + wwidth, max(span - wwidth, min_space), " "))
+        else:
+            runs.append(run(t, wwidth, wtext))
+    return runs
+
+
+def _draw_box(bbox, scale: tuple[float, float], height: int, rgb: tuple[float, float, float]):
+    """Stroke the outline of a bounding box, for debugging."""
+    corners = (bbox.ul, bbox.ur, bbox.lr, bbox.ll)
+    cs = ContentStreamBuilder().q().RG(*rgb).w(0.75)
+    for i, p in enumerate(corners):
+        x = p.x * scale[0]
+        y = (height - p.y) * scale[1]
+        cs = cs.m(x, y) if i == 0 else cs.l(x, y)
+    return cs.h().S().Q()
+
+
 def generate_text_content_stream(
     results: Iterable[Textbox],
     scale: tuple[float, float],
@@ -258,9 +346,9 @@ def generate_text_content_stream(
             f"Textline '{text}' bbox (in px): {bbox} vertical: {vertical}, angle: {angle}, box_width: {box_width}, box_height: {box_height}"
         )
 
+        word_boxes = []
         if vertical:
             font_size = box_width
-            stretch = 100.0 * box_height / len(text) / font_size * CHAR_ASPECT
             tm_args = (
                 font_size * sin_a,
                 -font_size * cos_a,
@@ -269,48 +357,39 @@ def generate_text_content_stream(
                 ulx,
                 uly,
             )
+            runs = [(tm_args, _stretch(box_height, len(text), font_size), text)]
         else:
             font_size = box_height
-            stretch = 100.0 * box_width / len(text) / font_size * CHAR_ASPECT
-            tm_args = (
-                font_size * cos_a,
-                font_size * sin_a,
-                -font_size * sin_a,
-                font_size * cos_a,
-                llx,
-                lly,
-            )
+            runs = []
+            if result.children:
+                # Word-level rendering for languages written with word separators.
+                runs = _word_runs(result.children, scale, height, font_size, cos_a, sin_a, llx, lly)
+                word_boxes = [word.bb for word in result.children]
+            if not runs:
+                runs = [
+                    (
+                        _horizontal_tm(font_size, cos_a, sin_a, llx, lly),
+                        _stretch(box_width, len(text), font_size),
+                        text,
+                    )
+                ]
 
-        cs = cs.add(
+        cs_line = (
             ContentStreamBuilder()
             .BT()
             .BDC(Name.Span, n)
             .Tr(3)  # Invisible ink
-            .Tm(*tm_args)
             .Tf(FONT_NAME, 1)
-            .Tz(stretch)
-            .TJ(text)
-            .EMC()
-            .ET()
         )
+        for tm_args, stretch, run_text in runs:
+            cs_line = cs_line.Tm(*tm_args).Tz(stretch).TJ(run_text)
+        cs = cs.add(cs_line.EMC().ET())
+
         if boxes:
-            urx = bbox.ur.x * scale[0]
-            ury = (height - bbox.ur.y) * scale[1]
-            lrx = bbox.lr.x * scale[0]
-            lry = (height - bbox.lr.y) * scale[1]
-            cs = cs.add(
-                ContentStreamBuilder()
-                .q()
-                .RG(1.0, 0.0, 0.0)
-                .w(0.75)
-                .m(ulx, uly)
-                .l(urx, ury)
-                .l(lrx, lry)
-                .l(llx, lly)
-                .h()
-                .S()
-                .Q()
-            )
+            cs = cs.add(_draw_box(bbox, scale, height, (1.0, 0.0, 0.0)))
+            if TEXT_POSITION_DEBUG:
+                for wbb in word_boxes:
+                    cs = cs.add(_draw_box(wbb, scale, height, (0.0, 0.0, 1.0)))
 
     cs = cs.Q()
     return cs.build()
