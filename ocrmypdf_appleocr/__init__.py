@@ -105,6 +105,11 @@ def check_options(options):
                         15,
                         f"Language '{lang}' is not supported by Apple OCR (supported in {options.appleocr_recognition_mode} mode: {', '.join(supported_languages)}). Use 'und' for undetermined language.",
                     )
+                if lang == "und":
+                    raise ExitCodeException(
+                        15,
+                        "Undetermined language 'und' can only be used as the sole language. Use a specific language code instead of \"und\" when specifying multiple languages.",
+                    )
 
     if options.pdf_renderer == "auto":
         options.pdf_renderer = "sandwich"
