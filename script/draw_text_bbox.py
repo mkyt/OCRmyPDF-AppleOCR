@@ -3,8 +3,9 @@
 # requires-python = ">=3.10"
 # dependencies = ["pikepdf>=8.10.1"]
 # ///
-"""Debug tool: outline each BT..ET text object in a PDF's content stream(s)
-with a red rectangle.
+"""Debug tool: outline the text in a PDF's content stream(s) with a red
+rectangle, either one box per BT..ET text object (default) or one per
+text-showing run with `--level word`.
 
 Phantom-text PDFs produced by OCRmyPDF-AppleOCR embed invisible text (Tr 3)
 inside `BT ... ET` blocks, often inside a Form XObject that is painted onto
@@ -19,6 +20,7 @@ content stream, so the outline is drawn last and stays visible on top.
 Usage:
     uv run script/draw_text_bbox.py input.pdf output.pdf
     uv run script/draw_text_bbox.py input.pdf output.pdf --color 0 0 1 --line-width 1
+    uv run script/draw_text_bbox.py input.pdf output.pdf --level word
 """
 
 from __future__ import annotations
@@ -164,6 +166,13 @@ def as_text_bytes(operand) -> bytes | None:
         return None
 
 
+def char_codes(data: bytes, is_cid: bool) -> list[int]:
+    """Character codes of one string operand (two bytes per code for a CID font)."""
+    if is_cid:
+        return [(data[i] << 8) | data[i + 1] for i in range(0, len(data) - 1, 2)]
+    return list(data)
+
+
 @dataclass
 class GraphicsState:
     ctm: Matrix = IDENTITY
@@ -177,15 +186,24 @@ class GraphicsState:
 
 
 class TextQuadFinder:
-    """Replays a content stream's operators to find each BT..ET text
-    object's bounding quad, recursing into any Form XObjects it paints."""
+    """Replays a content stream's operators to find text bounding quads,
+    recursing into any Form XObjects it paints.
 
-    def __init__(self):
+    At the "line" level each BT..ET text object yields one quad. At the "word"
+    level every text-showing operator yields its own quad instead, which is what
+    shows the word boxes of a word-level OCR text layer: those are written as one
+    BT..ET block per line holding one Tm/Tz/TJ run per word (see
+    ocrmypdf_appleocr/pdf.py). Runs that draw nothing but spaces are skipped, so
+    the gaps between words stay unmarked.
+    """
+
+    def __init__(self, level: str = "line"):
         # Quads (4 corner points each) found anywhere in the page (including
         # inside Form XObjects painted via `Do`), already transformed into
         # the page's own absolute content-stream coordinate space.
         self.quads: list[Quad] = []
         self.visited: set = set()
+        self.level = level
 
     def process(self, instructions, resources, base_ctm: Matrix) -> None:
         """Replay operators from one content stream.
@@ -238,14 +256,32 @@ class TextQuadFinder:
                 if data is None:  # a TJ kerning adjustment, in 1/1000 text units
                     total_tx -= float(el) / 1000.0 * gs.font_size * th
                     continue
-                if gs.font.is_cid:
-                    codes = [(data[i] << 8) | data[i + 1] for i in range(0, len(data) - 1, 2)]
-                else:
-                    codes = list(data)
-                for code in codes:
+                for code in char_codes(data, gs.font.is_cid):
                     word_spacing = gs.tw if (not gs.font.is_cid and code == 32) else 0.0
                     total_tx += (gs.font.width(code) * gs.font_size + gs.tc + word_spacing) * th
             return total_tx
+
+        def is_blank(elements) -> bool:
+            """True if a text-showing operator draws nothing but spaces."""
+            saw_text = False
+            for el in elements:
+                data = as_text_bytes(el)
+                if data is None:
+                    continue
+                saw_text = True
+                if any(code != 32 for code in char_codes(data, gs.font.is_cid)):
+                    return False
+            return saw_text
+
+        def add_quad(to_page: Matrix, x_end: float) -> None:
+            y_lo = gs.ts + gs.font.descent * gs.font_size
+            y_hi = gs.ts + gs.font.ascent * gs.font_size
+            quad = [
+                mat_apply(to_page, x, y)
+                for x, y in ((0.0, y_lo), (0.0, y_hi), (x_end, y_hi), (x_end, y_lo))
+            ]
+            if quad_area(quad) >= 1e-6:
+                self.quads.append(quad)
 
         def show_text(elements) -> None:
             nonlocal tm, block, block_inv, block_uv
@@ -253,6 +289,14 @@ class TextQuadFinder:
                 return
             total_tx = advance(elements)
             full = mat_mult(tm, gs.ctm)
+
+            if self.level == "word":
+                # One quad per run, in the run's own orientation.
+                if not is_blank(elements):
+                    add_quad(mat_mult(full, base_ctm), total_tx)
+                tm = mat_mult(translate(total_tx, 0.0), tm)
+                return
+
             if block is None:
                 block, block_inv = full, mat_invert(full)
 
@@ -383,12 +427,18 @@ def stroke_instructions(quads: list[Quad], color, line_width: float) -> list:
     return instrs
 
 
-def draw_text_bboxes(pdf: pikepdf.Pdf, box_color=(1.0, 0.0, 0.0), line_width: float = 0.5) -> int:
-    """Outline every BT..ET text object on every page with a stroked
-    rectangle. Returns the number of boxes drawn."""
+def draw_text_bboxes(
+    pdf: pikepdf.Pdf,
+    box_color=(1.0, 0.0, 0.0),
+    line_width: float = 0.5,
+    level: str = "line",
+) -> int:
+    """Outline every text object on every page with a stroked rectangle,
+    one per BT..ET block ("line") or one per text-showing run ("word").
+    Returns the number of boxes drawn."""
     total = 0
     for page in pdf.pages:
-        finder = TextQuadFinder()
+        finder = TextQuadFinder(level=level)
         instructions = pikepdf.parse_content_stream(page)
         finder.process(instructions, page.get("/Resources"), IDENTITY)
         if not finder.quads:
@@ -407,8 +457,9 @@ def annotate_pdf_file(
     output_pdf=None,
     box_color=(1.0, 0.0, 0.0),
     line_width: float = 0.5,
+    level: str = "line",
 ) -> int:
-    """Open `input_pdf`, draw a box around every BT..ET text object, and
+    """Open `input_pdf`, draw a box around every text object, and
     save the result to `output_pdf` (defaults to `input_pdf`, i.e. in-place).
 
     The result is always written to a temporary file next to the destination
@@ -420,7 +471,7 @@ def annotate_pdf_file(
     tmp_path = output_pdf.with_name(output_pdf.name + ".tmp")
 
     with pikepdf.open(input_pdf) as pdf:
-        count = draw_text_bboxes(pdf, box_color=box_color, line_width=line_width)
+        count = draw_text_bboxes(pdf, box_color=box_color, line_width=line_width, level=level)
         pdf.save(tmp_path)
     tmp_path.replace(output_pdf)
 
@@ -451,6 +502,15 @@ def main() -> int:
         default=0.5,
         help="Stroke line width in PDF units (default: 0.5)",
     )
+    parser.add_argument(
+        "--level",
+        choices=("line", "word"),
+        default="line",
+        help=(
+            "Outline whole BT..ET blocks (default) or each text-showing run "
+            "within them, which is one word in a word-level OCR text layer"
+        ),
+    )
     args = parser.parse_args()
 
     count = annotate_pdf_file(
@@ -458,6 +518,7 @@ def main() -> int:
         args.output_pdf,
         box_color=tuple(args.color),
         line_width=args.line_width,
+        level=args.level,
     )
 
     print(f"Drew {count} bounding box(es). Wrote {args.output_pdf}", file=sys.stderr)
