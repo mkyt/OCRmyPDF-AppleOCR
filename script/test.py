@@ -53,11 +53,11 @@ if __name__ == "__main__":
         else:
             print("Skipping LiveText bbox overlay: requires macOS 13 (Ventura) or later.")
         arg_base = [
-            "python3",
-            "-m",
+            "uv",
+            "run",
             "ocrmypdf",
-            "--plugin",
-            "ocrmypdf_appleocr",
+            # "--plugin",
+            # "ocrmypdf_appleocr",
             "--keep-temporary-files",
             "--optimize",
             "2",
