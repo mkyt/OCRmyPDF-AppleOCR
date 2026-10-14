@@ -185,7 +185,7 @@ class AppleOCREngine(OcrEngine):
         ) = perform_ocr(Path(input_file), options)
         plaintext = "\n".join(tb.text for tb in res)
 
-        generate_pdf(dpi, w, h, 1.0, res, Path(output_pdf), True)
+        generate_pdf(dpi, w, h, 1.0, res, Path(output_pdf))
 
         with open(output_text, "w", encoding="utf-8") as f:
             f.write(plaintext)

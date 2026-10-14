@@ -21,7 +21,6 @@ from pikepdf import (
 
 from ocrmypdf_appleocr.common import Textbox, log
 
-TEXT_POSITION_DEBUG = False
 GLYPHLESS_FONT = importlib.resources.read_binary("ocrmypdf_appleocr", "pdf.ttf")
 CHAR_ASPECT = 2
 FONT_NAME = Name("/f-0-0")
@@ -303,22 +302,10 @@ def _word_runs(
     return runs
 
 
-def _draw_box(bbox, scale: tuple[float, float], height: int, rgb: tuple[float, float, float]):
-    """Stroke the outline of a bounding box, for debugging."""
-    corners = (bbox.ul, bbox.ur, bbox.lr, bbox.ll)
-    cs = ContentStreamBuilder().q().RG(*rgb).w(0.75)
-    for i, p in enumerate(corners):
-        x = p.x * scale[0]
-        y = (height - p.y) * scale[1]
-        cs = cs.m(x, y) if i == 0 else cs.l(x, y)
-    return cs.h().S().Q()
-
-
 def generate_text_content_stream(
     results: Iterable[Textbox],
     scale: tuple[float, float],
     height: int,
-    boxes=False,
 ):
     """Generate a content stream for the described by results.
 
@@ -365,7 +352,6 @@ def generate_text_content_stream(
             f"box_width: {box_width}, box_height: {box_height}"
         )
 
-        word_boxes = []
         if vertical:
             runs = [
                 (
@@ -379,7 +365,6 @@ def generate_text_content_stream(
             if result.children:
                 # Word-level rendering for languages written with word separators.
                 runs = _word_runs(result.children, scale, height, font_size, cos_a, sin_a, ox, oy)
-                word_boxes = [word.bb for word in result.children]
             if not runs:
                 runs = [
                     (
@@ -400,12 +385,6 @@ def generate_text_content_stream(
             cs_line = cs_line.Tm(*tm_args).Tz(stretch).TJ(run_text)
         cs = cs.add(cs_line.EMC().ET())
 
-        if boxes:
-            cs = cs.add(_draw_box(bbox, scale, height, (1.0, 0.0, 0.0)))
-            if TEXT_POSITION_DEBUG:
-                for wbb in word_boxes:
-                    cs = cs.add(_draw_box(wbb, scale, height, (0.0, 0.0, 1.0)))
-
     cs = cs.Q()
     return cs.build()
 
@@ -417,7 +396,6 @@ def generate_pdf(
     image_scale: float,
     results: Iterable[Textbox],
     output_pdf: Path,
-    boxes: bool,
 ):
     """Convert OCR results to a PDF with text annotations (no images).
 
@@ -448,7 +426,7 @@ def generate_pdf(
             )
         )
 
-        cs = generate_text_content_stream(results, scale, height, boxes=boxes)
+        cs = generate_text_content_stream(results, scale, height)
         pdf.pages[0].Contents = pdf.make_stream(unparse_content_stream(cs))
 
         pdf.save(output_pdf)
