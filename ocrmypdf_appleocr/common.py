@@ -115,6 +115,9 @@ lang_code_to_locale = {
     "pol": "pl-PL",
     "ron": "ro-RO",
     "swe": "sv-SE",
+    "fin": "fi-FI",
+    "hin": "hi-IN",
+    "mar": "mr-IN",
 }
 
 unsegmented_languages = set(["chi_sim", "chi_tra", "yue_sim", "yue_tra", "jpn", "tha"])

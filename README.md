@@ -70,7 +70,7 @@ If `--pdf-renderer` is left at its default (`auto`), the plugin defaults to `san
 
 ### Supported Languages
 
-As of macOS Tahoe 26, the following languages are supported by Apple Vision OCR:
+As of macOS 27 Golden Gate, the following languages are supported by Apple Vision OCR. Finnish, Hindi and Marathi were added in macOS 27 and are not available on earlier versions:
 
 |   Language code  |   Language name            |   Fast mode  |   Accurate mode  |   LiveText  |
 |------------------|----------------------------|--------------|------------------|-------------|
@@ -104,6 +104,9 @@ As of macOS Tahoe 26, the following languages are supported by Apple Vision OCR:
 |   pol            |   Polish                   |              |   ✓              |   ✓         |
 |   ron            |   Romanian                 |              |   ✓              |   ✓         |
 |   swe            |   Swedish                  |              |   ✓              |   ✓         |
+|   fin            |   Finnish                  |              |   ✓              |   ✓         |
+|   hin            |   Hindi                    |              |   ✓              |   ✓         |
+|   mar            |   Marathi                  |              |   ✓              |   ✓         |
 
 
 ## Acknowledgements
