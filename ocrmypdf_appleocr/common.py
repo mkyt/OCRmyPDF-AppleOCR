@@ -120,7 +120,9 @@ lang_code_to_locale = {
     "mar": "mr-IN",
 }
 
-unsegmented_languages = set(["chi_sim", "chi_tra", "yue_sim", "yue_tra", "jpn", "tha"])
+# Languages for which LiveText does not return words as the children of a line, but
+# single characters (CJK, Korean syllables) or grapheme fragments (Thai).
+unsegmented_languages = set(["chi_sim", "chi_tra", "yue_sim", "yue_tra", "jpn", "kor", "tha"])
 
 
 locale_to_lang_code = {v: k for k, v in lang_code_to_locale.items()}
